@@ -1,0 +1,18 @@
+package com.dbwb.platform.menu.repository;
+
+import com.dbwb.platform.menu.entity.MenuItem;
+import org.springframework.data.jpa.repository.JpaRepository;
+
+import java.util.List;
+import java.util.UUID;
+
+public interface MenuItemRepository extends JpaRepository<MenuItem, UUID> {
+
+    List<MenuItem> findByWebsiteIdAndTrashedAtIsNull(UUID websiteId);
+
+    List<MenuItem> findByWebsiteIdAndCategoryIdAndTrashedAtIsNull(UUID websiteId, UUID categoryId);
+
+    List<MenuItem> findByWebsiteIdAndNameContainingIgnoreCaseAndTrashedAtIsNull(UUID websiteId, String name);
+
+    long countByCategoryIdAndTrashedAtIsNull(UUID categoryId);
+}

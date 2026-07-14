@@ -1,0 +1,63 @@
+spring:
+  application:
+    name: dbwb-platform
+
+  datasource:
+    url: ${DB_URL:jdbc:postgresql://localhost:5432/dbwb}
+    username: ${DB_USERNAME:dbwb_user}
+    password: ${DB_PASSWORD:changeme}
+    driver-class-name: org.postgresql.Driver
+
+  jpa:
+    hibernate:
+      # Flyway owns schema evolution; Hibernate only validates it matches the entities.
+      ddl-auto: validate
+    open-in-view: false
+    properties:
+      hibernate:
+        format_sql: true
+
+  flyway:
+    enabled: true
+    locations: classpath:db/migration
+
+  mail:
+    host: ${MAIL_HOST:smtp.example.com}
+    port: ${MAIL_PORT:587}
+    username: ${MAIL_USERNAME:}
+    password: ${MAIL_PASSWORD:}
+    properties:
+      mail:
+        smtp:
+          auth: true
+          starttls:
+            enable: true
+
+server:
+  port: ${SERVER_PORT:8080}
+
+# --- Centralized business configuration ---
+# All BRD-derived numeric/behavioral constants live here (not scattered/hardcoded
+# in services) so they can be tuned per environment without a code change.
+dbwb:
+  jwt:
+    secret: ${JWT_SECRET:replace-this-with-a-long-random-secret-in-every-environment}
+    access-token-ttl-minutes: ${JWT_ACCESS_TTL_MIN:60}
+    refresh-token-ttl-days: ${JWT_REFRESH_TTL_DAYS:14}
+
+  cors:
+    allowed-origins: ${CORS_ALLOWED_ORIGINS:http://localhost:3000}
+
+  business-rules:
+    subscription-grace-period-days: 3        # BR-SUB-006
+    account-deletion-disable-window-days: 30  # BR-AUTH-006
+    website-trash-retention-days: 30          # BR-DATA-004
+    menu-item-trash-retention-days: 7         # BR-MENU-011
+    website-public-load-target-seconds: 3     # BR-NFR-001
+
+  frontend:
+    public-site-base-url: ${PUBLIC_SITE_BASE_URL:http://localhost:3000}
+
+logging:
+  level:
+    com.dbwb.platform: INFO

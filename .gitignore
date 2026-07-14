@@ -1,0 +1,7 @@
+﻿target/
+.env
+.classpath
+.project
+.settings/
+.factorypath
+*.log

@@ -1,0 +1,177 @@
+package com.dbwb.platform.website;
+
+import com.dbwb.platform.audit.AuditService;
+import com.dbwb.platform.common.exception.BusinessRuleViolationException;
+import com.dbwb.platform.common.exception.ResourceNotFoundException;
+import com.dbwb.platform.profile.repository.BusinessProfileRepository;
+import com.dbwb.platform.security.AuthenticatedAccount;
+import com.dbwb.platform.subscription.SubscriptionQueryService;
+import com.dbwb.platform.theme.entity.Theme;
+import com.dbwb.platform.theme.repository.ThemeRepository;
+import com.dbwb.platform.website.dto.CreateWebsiteRequest;
+import com.dbwb.platform.website.dto.UpdateDraftContentRequest;
+import com.dbwb.platform.website.entity.BusinessWebsite;
+import com.dbwb.platform.website.entity.WebsiteStatus;
+import com.dbwb.platform.website.repository.BusinessWebsiteRepository;
+import com.dbwb.platform.menu.repository.CategoryRepository;
+import com.dbwb.platform.account.repository.AccountRepository;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+
+import java.time.Instant;
+import java.util.List;
+import java.util.UUID;
+
+/**
+ * Implements the Business Owner Onboarding journey (Section 8.1) end to end
+ * except payment itself, which lives in the subscription module.
+ */
+@Service
+public class WebsiteService {
+
+    private final BusinessWebsiteRepository websiteRepository;
+    private final ThemeRepository themeRepository;
+    private final AccountRepository accountRepository;
+    private final BusinessProfileRepository profileRepository;
+    private final CategoryRepository categoryRepository;
+    private final SlugGenerator slugGenerator;
+    private final WebsiteAccessGuard accessGuard;
+    private final SubscriptionQueryService subscriptionQueryService;
+    private final AuditService auditService;
+
+    public WebsiteService(
+            BusinessWebsiteRepository websiteRepository,
+            ThemeRepository themeRepository,
+            AccountRepository accountRepository,
+            BusinessProfileRepository profileRepository,
+            CategoryRepository categoryRepository,
+            SlugGenerator slugGenerator,
+            WebsiteAccessGuard accessGuard,
+            SubscriptionQueryService subscriptionQueryService,
+            AuditService auditService) {
+        this.websiteRepository = websiteRepository;
+        this.themeRepository = themeRepository;
+        this.accountRepository = accountRepository;
+        this.profileRepository = profileRepository;
+        this.categoryRepository = categoryRepository;
+        this.slugGenerator = slugGenerator;
+        this.accessGuard = accessGuard;
+        this.subscriptionQueryService = subscriptionQueryService;
+        this.auditService = auditService;
+    }
+
+    @Transactional
+    public BusinessWebsite create(AuthenticatedAccount caller, CreateWebsiteRequest request) {
+        // NOTE: "number of websites per Business Owner determined by plan" (7.2) is
+        // listed as TBD-003 in the BRD (exact feature/limit matrix not finalized).
+        // Enforce here once that matrix is approved - intentionally not hardcoded.
+
+        BusinessWebsite website = new BusinessWebsite();
+        website.setOwner(accountRepository.getReferenceById(caller.accountId()));
+        website.setBusinessName(request.businessName());
+        website.setSlug(slugGenerator.generateUniqueSlug(request.businessName()));
+        website.setPageMode(request.pageMode());
+        website.setStatus(WebsiteStatus.DRAFT);
+
+        if (request.themeId() != null) {
+            Theme theme = themeRepository.findById(request.themeId())
+                    .orElseThrow(() -> new ResourceNotFoundException("Theme not found."));
+            website.setTheme(theme);
+        }
+        // else: build-from-scratch (BR-SITE-002) - theme left null, frontend uses
+        // predefined sections directly instead of a preset theme.
+
+        websiteRepository.save(website);
+        auditService.record(caller.accountId(), "WEBSITE_CREATED", website.getId().toString());
+        return website;
+    }
+
+    @Transactional(readOnly = true)
+    public List<BusinessWebsite> listForOwner(UUID ownerId) {
+        return websiteRepository.findByOwnerId(ownerId);
+    }
+
+    @Transactional(readOnly = true)
+    public BusinessWebsite get(UUID websiteId, AuthenticatedAccount caller) {
+        return accessGuard.requireReadAccess(websiteId, caller);
+    }
+
+    @Transactional
+    public BusinessWebsite saveDraft(UUID websiteId, AuthenticatedAccount caller, UpdateDraftContentRequest request) {
+        BusinessWebsite website = accessGuard.requirePermission(
+                websiteId, caller, com.dbwb.platform.manager.entity.Permission.MANAGE_THEME_AND_CONTENT);
+        website.setDraftContent(request.content());
+        return website;
+    }
+
+    /**
+     * BR-THEME-006 / BR-RULE-001/013: validates all mandatory publication
+     * fields and an active subscription/grace period before allowing Publish.
+     * On success, promotes draft -> published and retains exactly one prior
+     * published version (BR-THEME-007).
+     */
+    @Transactional
+    public BusinessWebsite publish(UUID websiteId, AuthenticatedAccount caller) {
+        BusinessWebsite website = accessGuard.requirePermission(
+                websiteId, caller, com.dbwb.platform.manager.entity.Permission.PUBLISH_WEBSITE);
+
+        if (!subscriptionQueryService.hasPublishableSubscription(websiteId)) {
+            throw new BusinessRuleViolationException(
+                    "This website cannot be published without an active subscription or valid grace period.");
+        }
+
+        validateMandatoryPublicationFields(website);
+
+        if (website.getPublishedContent() != null) {
+            website.setPreviousPublishedContent(website.getPublishedContent()); // BR-THEME-007: one-version rollback
+        }
+        website.setPublishedContent(website.getDraftContent());
+        website.setPublishedAt(Instant.now());
+        website.setStatus(WebsiteStatus.PUBLISHED);
+
+        auditService.record(caller.accountId(), "WEBSITE_PUBLISHED", website.getId().toString());
+        return website;
+    }
+
+    /** BR-THEME-007: restore the immediately previous published version. */
+    @Transactional
+    public BusinessWebsite restorePreviousVersion(UUID websiteId, AuthenticatedAccount caller) {
+        BusinessWebsite website = accessGuard.requirePermission(
+                websiteId, caller, com.dbwb.platform.manager.entity.Permission.MANAGE_THEME_AND_CONTENT);
+
+        if (website.getPreviousPublishedContent() == null) {
+            throw new BusinessRuleViolationException("No previous published version is available to restore.");
+        }
+        String current = website.getPublishedContent();
+        website.setPublishedContent(website.getPreviousPublishedContent());
+        website.setPreviousPublishedContent(current);
+        return website;
+    }
+
+    private void validateMandatoryPublicationFields(BusinessWebsite website) {
+        // BR-THEME-006: business name, required contact/ordering data, at least
+        // one menu category+item, and complete theme configuration as applicable.
+        if (website.getBusinessName() == null || website.getBusinessName().isBlank()) {
+            throw new BusinessRuleViolationException("Business name is required before publishing.");
+        }
+
+        boolean hasProfile = profileRepository.findByWebsiteId(website.getId()).isPresent();
+        if (!hasProfile) {
+            throw new BusinessRuleViolationException("Business profile/contact information is required before publishing.");
+        }
+
+        long categoryCount = categoryRepository.countByWebsiteId(website.getId());
+        if (categoryCount == 0) {
+            throw new BusinessRuleViolationException("At least one menu category and item is required before publishing.");
+        }
+
+        // BR-RULE-013: WhatsApp number mandatory when WhatsApp ordering is enabled.
+        if (website.getOrderingMode() == com.dbwb.platform.website.entity.OrderingMode.WHATSAPP_ORDERING) {
+            var profile = profileRepository.findByWebsiteId(website.getId()).orElseThrow();
+            if (profile.getWhatsappNumber() == null || profile.getWhatsappNumber().isBlank()) {
+                throw new BusinessRuleViolationException(
+                        "A WhatsApp number is required before publishing when WhatsApp ordering is enabled.");
+            }
+        }
+    }
+}

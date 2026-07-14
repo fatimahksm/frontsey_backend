@@ -1,0 +1,70 @@
+package com.dbwb.platform.common.config;
+
+import org.springframework.boot.context.properties.ConfigurationProperties;
+import org.springframework.context.annotation.Configuration;
+
+/**
+ * Single source of truth for BRD-derived numeric business rules
+ * (Section 10 "Business Rules" + Section 13 "Non-Functional Requirements").
+ * Services must read these values from here rather than hardcoding numbers,
+ * so a policy change (e.g. grace period length) is a config change only.
+ */
+@Configuration
+@ConfigurationProperties(prefix = "dbwb.business-rules")
+public class BusinessRuleProperties {
+
+    /** BR-SUB-006: days a subscription stays active after expiry before the site stops. */
+    private int subscriptionGracePeriodDays;
+
+    /** BR-AUTH-006: days an account stays disabled (recoverable) before permanent deletion. */
+    private int accountDeletionDisableWindowDays;
+
+    /** BR-DATA-004: days a deleted website is restorable before permanent deletion. */
+    private int websiteTrashRetentionDays;
+
+    /** BR-MENU-011: days a deleted menu item is restorable before permanent deletion. */
+    private int menuItemTrashRetentionDays;
+
+    /** BR-NFR-001: target public page load time, used only for monitoring/alerting thresholds. */
+    private int websitePublicLoadTargetSeconds;
+
+    public int getSubscriptionGracePeriodDays() {
+        return subscriptionGracePeriodDays;
+    }
+
+    public void setSubscriptionGracePeriodDays(int subscriptionGracePeriodDays) {
+        this.subscriptionGracePeriodDays = subscriptionGracePeriodDays;
+    }
+
+    public int getAccountDeletionDisableWindowDays() {
+        return accountDeletionDisableWindowDays;
+    }
+
+    public void setAccountDeletionDisableWindowDays(int accountDeletionDisableWindowDays) {
+        this.accountDeletionDisableWindowDays = accountDeletionDisableWindowDays;
+    }
+
+    public int getWebsiteTrashRetentionDays() {
+        return websiteTrashRetentionDays;
+    }
+
+    public void setWebsiteTrashRetentionDays(int websiteTrashRetentionDays) {
+        this.websiteTrashRetentionDays = websiteTrashRetentionDays;
+    }
+
+    public int getMenuItemTrashRetentionDays() {
+        return menuItemTrashRetentionDays;
+    }
+
+    public void setMenuItemTrashRetentionDays(int menuItemTrashRetentionDays) {
+        this.menuItemTrashRetentionDays = menuItemTrashRetentionDays;
+    }
+
+    public int getWebsitePublicLoadTargetSeconds() {
+        return websitePublicLoadTargetSeconds;
+    }
+
+    public void setWebsitePublicLoadTargetSeconds(int websitePublicLoadTargetSeconds) {
+        this.websitePublicLoadTargetSeconds = websitePublicLoadTargetSeconds;
+    }
+}
