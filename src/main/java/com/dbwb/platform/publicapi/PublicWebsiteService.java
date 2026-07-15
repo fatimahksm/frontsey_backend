@@ -10,6 +10,7 @@ import com.dbwb.platform.menu.repository.BoxVariantRepository;
 import com.dbwb.platform.menu.repository.CategoryRepository;
 import com.dbwb.platform.menu.repository.MenuItemRepository;
 import com.dbwb.platform.menu.repository.SizeVariantRepository;
+import com.dbwb.platform.portfolio.repository.ServiceItemRepository;
 import com.dbwb.platform.profile.repository.BusinessProfileRepository;
 import com.dbwb.platform.profile.repository.OpeningHoursRepository;
 import com.dbwb.platform.publicapi.dto.PublicMenuItem;
@@ -48,6 +49,7 @@ public class PublicWebsiteService {
     private final DeliveryAreaRepository deliveryAreaRepository;
     private final GalleryImageRepository galleryImageRepository;
     private final SeoMetadataRepository seoMetadataRepository;
+    private final ServiceItemRepository serviceItemRepository;
 
     public PublicWebsiteService(
             BusinessWebsiteRepository websiteRepository,
@@ -61,7 +63,8 @@ public class PublicWebsiteService {
             BoxVariantRepository boxVariantRepository,
             DeliveryAreaRepository deliveryAreaRepository,
             GalleryImageRepository galleryImageRepository,
-            SeoMetadataRepository seoMetadataRepository) {
+            SeoMetadataRepository seoMetadataRepository,
+            ServiceItemRepository serviceItemRepository) {
         this.websiteRepository = websiteRepository;
         this.profileRepository = profileRepository;
         this.openingHoursRepository = openingHoursRepository;
@@ -74,6 +77,7 @@ public class PublicWebsiteService {
         this.deliveryAreaRepository = deliveryAreaRepository;
         this.galleryImageRepository = galleryImageRepository;
         this.seoMetadataRepository = seoMetadataRepository;
+        this.serviceItemRepository = serviceItemRepository;
     }
 
     @Transactional(readOnly = true)
@@ -155,9 +159,15 @@ public class PublicWebsiteService {
                 .map(s -> new PublicWebsiteResponse.PublicSeoMetadata(s.getMetaTitle(), s.getMetaDescription(), s.getOgImageUrl()))
                 .orElse(new PublicWebsiteResponse.PublicSeoMetadata(website.getBusinessName(), null, null));
 
+        List<PublicWebsiteResponse.PublicService> services = serviceItemRepository
+                .findByWebsiteIdOrderBySortOrder(website.getId()).stream()
+                .map(s -> new PublicWebsiteResponse.PublicService(
+                        s.getId().toString(), s.getName(), s.getDescription(), s.getPrice(), s.getImageUrl()))
+                .toList();
+
         return new PublicWebsiteResponse(
-                website.getBusinessName(), website.getSlug(), website.getPageMode(), website.getOrderingMode(),
-                website.getPrimaryLanguage(), website.getCurrency(), website.getPublishedContent(),
-                profile, hours, categories, areas, galleryUrls, seo);
+                website.getBusinessName(), website.getSlug(), website.getPageMode(), website.getTemplateType(),
+                website.getOrderingMode(), website.getPrimaryLanguage(), website.getCurrency(),
+                website.getPublishedContent(), profile, hours, categories, areas, services, galleryUrls, seo);
     }
 }

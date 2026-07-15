@@ -2,7 +2,9 @@ package com.dbwb.platform.publicapi.dto;
 
 import com.dbwb.platform.website.entity.OrderingMode;
 import com.dbwb.platform.website.entity.PageMode;
+import com.dbwb.platform.website.entity.TemplateType;
 
+import java.math.BigDecimal;
 import java.util.List;
 import java.util.Map;
 
@@ -14,6 +16,7 @@ public record PublicWebsiteResponse(
         String businessName,
         String slug,
         PageMode pageMode,
+        TemplateType templateType,
         OrderingMode orderingMode,
         String primaryLanguage,
         String currency,
@@ -22,6 +25,8 @@ public record PublicWebsiteResponse(
         List<PublicOpeningHours> openingHours,
         List<PublicCategory> categories,
         List<PublicDeliveryArea> deliveryAreas,
+        /** Populated only for TemplateType.PORTFOLIO sites; empty for MENU_ORDERING. */
+        List<PublicService> services,
         List<String> galleryImageUrls,
         PublicSeoMetadata seo
 ) {
@@ -43,5 +48,8 @@ public record PublicWebsiteResponse(
 
     public record PublicDeliveryArea(String id, String name, java.math.BigDecimal fee,
                                       java.math.BigDecimal minimumOrder, java.math.BigDecimal freeThreshold) {
+    }
+
+    public record PublicService(String id, String name, String description, BigDecimal price, String imageUrl) {
     }
 }

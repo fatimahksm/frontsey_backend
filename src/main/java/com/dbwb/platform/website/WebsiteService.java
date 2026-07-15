@@ -3,6 +3,7 @@ package com.dbwb.platform.website;
 import com.dbwb.platform.audit.AuditService;
 import com.dbwb.platform.common.exception.BusinessRuleViolationException;
 import com.dbwb.platform.common.exception.ResourceNotFoundException;
+import com.dbwb.platform.portfolio.repository.ServiceItemRepository;
 import com.dbwb.platform.profile.repository.BusinessProfileRepository;
 import com.dbwb.platform.security.AuthenticatedAccount;
 import com.dbwb.platform.subscription.SubscriptionQueryService;
@@ -11,6 +12,7 @@ import com.dbwb.platform.theme.repository.ThemeRepository;
 import com.dbwb.platform.website.dto.CreateWebsiteRequest;
 import com.dbwb.platform.website.dto.UpdateDraftContentRequest;
 import com.dbwb.platform.website.entity.BusinessWebsite;
+import com.dbwb.platform.website.entity.TemplateType;
 import com.dbwb.platform.website.entity.WebsiteStatus;
 import com.dbwb.platform.website.repository.BusinessWebsiteRepository;
 import com.dbwb.platform.menu.repository.CategoryRepository;
@@ -34,6 +36,7 @@ public class WebsiteService {
     private final AccountRepository accountRepository;
     private final BusinessProfileRepository profileRepository;
     private final CategoryRepository categoryRepository;
+    private final ServiceItemRepository serviceItemRepository;
     private final SlugGenerator slugGenerator;
     private final WebsiteAccessGuard accessGuard;
     private final SubscriptionQueryService subscriptionQueryService;
@@ -45,6 +48,7 @@ public class WebsiteService {
             AccountRepository accountRepository,
             BusinessProfileRepository profileRepository,
             CategoryRepository categoryRepository,
+            ServiceItemRepository serviceItemRepository,
             SlugGenerator slugGenerator,
             WebsiteAccessGuard accessGuard,
             SubscriptionQueryService subscriptionQueryService,
@@ -54,6 +58,7 @@ public class WebsiteService {
         this.accountRepository = accountRepository;
         this.profileRepository = profileRepository;
         this.categoryRepository = categoryRepository;
+        this.serviceItemRepository = serviceItemRepository;
         this.slugGenerator = slugGenerator;
         this.accessGuard = accessGuard;
         this.subscriptionQueryService = subscriptionQueryService;
@@ -71,6 +76,7 @@ public class WebsiteService {
         website.setBusinessName(request.businessName());
         website.setSlug(slugGenerator.generateUniqueSlug(request.businessName()));
         website.setPageMode(request.pageMode());
+        website.setTemplateType(request.templateType());
         website.setStatus(WebsiteStatus.DRAFT);
 
         if (request.themeId() != null) {
@@ -176,9 +182,15 @@ public class WebsiteService {
             throw new BusinessRuleViolationException("Business profile/contact information is required before publishing.");
         }
 
-        long categoryCount = categoryRepository.countByWebsiteId(website.getId());
-        if (categoryCount == 0) {
-            throw new BusinessRuleViolationException("At least one menu category and item is required before publishing.");
+        if (website.getTemplateType() == TemplateType.PORTFOLIO) {
+            if (serviceItemRepository.countByWebsiteId(website.getId()) == 0) {
+                throw new BusinessRuleViolationException("At least one service is required before publishing.");
+            }
+        } else {
+            long categoryCount = categoryRepository.countByWebsiteId(website.getId());
+            if (categoryCount == 0) {
+                throw new BusinessRuleViolationException("At least one menu category and item is required before publishing.");
+            }
         }
 
         // BR-RULE-013: WhatsApp number mandatory when WhatsApp ordering is enabled.

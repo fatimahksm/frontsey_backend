@@ -48,6 +48,10 @@ public class BusinessWebsite extends BaseEntity {
 
     @Enumerated(EnumType.STRING)
     @Column(nullable = false)
+    private TemplateType templateType = TemplateType.MENU_ORDERING;
+
+    @Enumerated(EnumType.STRING)
+    @Column(nullable = false)
     private OrderingMode orderingMode = OrderingMode.DISPLAY_ONLY;
 
     @Enumerated(EnumType.STRING)
@@ -119,6 +123,14 @@ public class BusinessWebsite extends BaseEntity {
 
     public void setPageMode(PageMode pageMode) {
         this.pageMode = pageMode;
+    }
+
+    public TemplateType getTemplateType() {
+        return templateType;
+    }
+
+    public void setTemplateType(TemplateType templateType) {
+        this.templateType = templateType;
     }
 
     public OrderingMode getOrderingMode() {
