@@ -13,4 +13,6 @@ public interface SubscriptionRepository extends JpaRepository<Subscription, UUID
     Optional<Subscription> findByWebsiteId(UUID websiteId);
     List<Subscription> findByStatusAndEndDateBefore(SubscriptionStatus status, Instant instant);
     List<Subscription> findByStatusAndGraceEndsAtBefore(SubscriptionStatus status, Instant instant);
+    long countByStatus(SubscriptionStatus status);
+    List<Subscription> findByStatusAndEndDateBetween(SubscriptionStatus status, Instant from, Instant to);
 }

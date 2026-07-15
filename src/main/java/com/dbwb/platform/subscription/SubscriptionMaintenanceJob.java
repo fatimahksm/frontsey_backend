@@ -13,7 +13,7 @@ public class SubscriptionMaintenanceJob {
         this.subscriptionService = subscriptionService;
     }
 
-    @Scheduled(fixedRate = 60 * 60 * 1000)
+    @Scheduled(fixedRateString = "${dbwb.business-rules.maintenance-job-interval-ms}")
     public void run() {
         subscriptionService.runLifecycleMaintenance();
     }

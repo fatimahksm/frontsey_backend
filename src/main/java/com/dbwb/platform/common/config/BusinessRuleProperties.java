@@ -34,6 +34,9 @@ public class BusinessRuleProperties {
     /** BR-AUTH-004: minutes a password-reset link stays valid before it must be re-requested. */
     private int passwordResetTokenTtlMinutes;
 
+    /** How often the subscription-lifecycle and suspension-reactivation background jobs run. */
+    private long maintenanceJobIntervalMs;
+
     public int getSubscriptionGracePeriodDays() {
         return subscriptionGracePeriodDays;
     }
@@ -88,5 +91,13 @@ public class BusinessRuleProperties {
 
     public void setPasswordResetTokenTtlMinutes(int passwordResetTokenTtlMinutes) {
         this.passwordResetTokenTtlMinutes = passwordResetTokenTtlMinutes;
+    }
+
+    public long getMaintenanceJobIntervalMs() {
+        return maintenanceJobIntervalMs;
+    }
+
+    public void setMaintenanceJobIntervalMs(long maintenanceJobIntervalMs) {
+        this.maintenanceJobIntervalMs = maintenanceJobIntervalMs;
     }
 }

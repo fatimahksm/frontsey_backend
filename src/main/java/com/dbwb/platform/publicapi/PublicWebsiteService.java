@@ -24,6 +24,8 @@ import org.springframework.transaction.annotation.Transactional;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
+import java.util.UUID;
 
 /**
  * BR-QR-003/004: an unknown/deleted/trashed slug yields NOT_FOUND (branded
@@ -72,6 +74,11 @@ public class PublicWebsiteService {
         this.deliveryAreaRepository = deliveryAreaRepository;
         this.galleryImageRepository = galleryImageRepository;
         this.seoMetadataRepository = seoMetadataRepository;
+    }
+
+    @Transactional(readOnly = true)
+    public Optional<UUID> findWebsiteIdBySlug(String slug) {
+        return websiteRepository.findBySlug(slug).map(BusinessWebsite::getId);
     }
 
     @Transactional(readOnly = true)

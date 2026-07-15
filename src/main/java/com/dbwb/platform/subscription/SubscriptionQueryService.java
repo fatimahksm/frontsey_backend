@@ -1,9 +1,11 @@
 package com.dbwb.platform.subscription;
 
+import com.dbwb.platform.plan.entity.Plan;
 import com.dbwb.platform.subscription.entity.SubscriptionStatus;
 import com.dbwb.platform.subscription.repository.SubscriptionRepository;
 import org.springframework.stereotype.Service;
 
+import java.util.Optional;
 import java.util.UUID;
 
 /**
@@ -25,5 +27,12 @@ public class SubscriptionQueryService {
         return subscriptionRepository.findByWebsiteId(websiteId)
                 .map(sub -> sub.getStatus() == SubscriptionStatus.ACTIVE || sub.getStatus() == SubscriptionStatus.GRACE)
                 .orElse(false);
+    }
+
+    /** The plan backing the website's current active/grace subscription, if any - used for plan-gated features (BR-AN-001). */
+    public Optional<Plan> getActivePlan(UUID websiteId) {
+        return subscriptionRepository.findByWebsiteId(websiteId)
+                .filter(sub -> sub.getStatus() == SubscriptionStatus.ACTIVE || sub.getStatus() == SubscriptionStatus.GRACE)
+                .map(com.dbwb.platform.subscription.entity.Subscription::getPlan);
     }
 }

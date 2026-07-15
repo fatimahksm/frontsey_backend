@@ -55,6 +55,7 @@ dbwb:
     website-public-load-target-seconds: 3     # BR-NFR-001
     email-verification-token-ttl-hours: 24    # BR-AUTH-002
     password-reset-token-ttl-minutes: 30      # BR-AUTH-004
+    maintenance-job-interval-ms: 3600000      # 1 hour - BR-SUB-006/BR-ADM-004 background jobs
 
   frontend:
     public-site-base-url: ${PUBLIC_SITE_BASE_URL:http://localhost:3000}
@@ -62,6 +63,11 @@ dbwb:
   support:
     # TBD-012: real support mailbox pending business decision.
     notification-email: ${SUPPORT_NOTIFICATION_EMAIL:support@example.com}
+
+  admin:
+    # One-time first-Super-Admin bootstrap (see AdminBootstrap) - blank means skipped.
+    bootstrap-email: ${ADMIN_BOOTSTRAP_EMAIL:}
+    bootstrap-password: ${ADMIN_BOOTSTRAP_PASSWORD:}
 
 logging:
   level:
