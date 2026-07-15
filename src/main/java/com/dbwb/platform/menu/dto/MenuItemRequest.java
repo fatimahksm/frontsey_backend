@@ -15,6 +15,8 @@ public record MenuItemRequest(
         @NotNull @DecimalMin(value = "0.0", inclusive = true) BigDecimal price,
         BigDecimal discountPrice,
         String imageUrl,
-        Integer maxOrderQuantity
+        Integer maxOrderQuantity,
+        /** BR-OPT-004: true if this item is a fixed box (uses BoxVariants, not SizeVariants). */
+        boolean fixedBoxItem
 ) {
 }

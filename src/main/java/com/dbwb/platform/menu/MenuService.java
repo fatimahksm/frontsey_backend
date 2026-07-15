@@ -246,6 +246,7 @@ public class MenuService {
         item.setDiscountPrice(request.discountPrice());
         item.setImageUrl(request.imageUrl());
         item.setMaxOrderQuantity(request.maxOrderQuantity());
+        item.setFixedBoxItem(request.fixedBoxItem());
     }
 
     private void validateDiscount(java.math.BigDecimal price, java.math.BigDecimal discountPrice) {
