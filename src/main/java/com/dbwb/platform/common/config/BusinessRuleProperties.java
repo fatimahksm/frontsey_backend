@@ -28,6 +28,12 @@ public class BusinessRuleProperties {
     /** BR-NFR-001: target public page load time, used only for monitoring/alerting thresholds. */
     private int websitePublicLoadTargetSeconds;
 
+    /** BR-AUTH-002: hours an email-verification link stays valid before it must be re-requested. */
+    private int emailVerificationTokenTtlHours;
+
+    /** BR-AUTH-004: minutes a password-reset link stays valid before it must be re-requested. */
+    private int passwordResetTokenTtlMinutes;
+
     public int getSubscriptionGracePeriodDays() {
         return subscriptionGracePeriodDays;
     }
@@ -66,5 +72,21 @@ public class BusinessRuleProperties {
 
     public void setWebsitePublicLoadTargetSeconds(int websitePublicLoadTargetSeconds) {
         this.websitePublicLoadTargetSeconds = websitePublicLoadTargetSeconds;
+    }
+
+    public int getEmailVerificationTokenTtlHours() {
+        return emailVerificationTokenTtlHours;
+    }
+
+    public void setEmailVerificationTokenTtlHours(int emailVerificationTokenTtlHours) {
+        this.emailVerificationTokenTtlHours = emailVerificationTokenTtlHours;
+    }
+
+    public int getPasswordResetTokenTtlMinutes() {
+        return passwordResetTokenTtlMinutes;
+    }
+
+    public void setPasswordResetTokenTtlMinutes(int passwordResetTokenTtlMinutes) {
+        this.passwordResetTokenTtlMinutes = passwordResetTokenTtlMinutes;
     }
 }

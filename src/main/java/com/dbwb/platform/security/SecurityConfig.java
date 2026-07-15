@@ -1,6 +1,6 @@
 package com.dbwb.platform.security;
 
-import org.springframework.beans.factory.annotation.Value;
+import com.dbwb.platform.common.config.CorsProperties;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
@@ -23,11 +23,9 @@ public class SecurityConfig {
     private final JwtAuthFilter jwtAuthFilter;
     private final List<String> allowedOrigins;
 
-    public SecurityConfig(
-            JwtAuthFilter jwtAuthFilter,
-            @Value("${dbwb.cors.allowed-origins}") String allowedOrigins) {
+    public SecurityConfig(JwtAuthFilter jwtAuthFilter, CorsProperties corsProperties) {
         this.jwtAuthFilter = jwtAuthFilter;
-        this.allowedOrigins = List.of(allowedOrigins.split(","));
+        this.allowedOrigins = corsProperties.getAllowedOriginsList();
     }
 
     @Bean

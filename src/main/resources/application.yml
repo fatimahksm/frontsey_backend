@@ -43,17 +43,18 @@ dbwb:
   jwt:
     secret: ${JWT_SECRET:replace-this-with-a-long-random-secret-in-every-environment}
     access-token-ttl-minutes: ${JWT_ACCESS_TTL_MIN:60}
-    refresh-token-ttl-days: ${JWT_REFRESH_TTL_DAYS:14}
 
   cors:
     allowed-origins: ${CORS_ALLOWED_ORIGINS:http://localhost:3000}
 
   business-rules:
-    subscription-grace-period-days: 3        # BR-SUB-006
+    subscription-grace-period-days: 3         # BR-SUB-006
     account-deletion-disable-window-days: 30  # BR-AUTH-006
     website-trash-retention-days: 30          # BR-DATA-004
     menu-item-trash-retention-days: 7         # BR-MENU-011
     website-public-load-target-seconds: 3     # BR-NFR-001
+    email-verification-token-ttl-hours: 24    # BR-AUTH-002
+    password-reset-token-ttl-minutes: 30      # BR-AUTH-004
 
   frontend:
     public-site-base-url: ${PUBLIC_SITE_BASE_URL:http://localhost:3000}

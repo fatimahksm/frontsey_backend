@@ -10,11 +10,12 @@ import com.dbwb.platform.account.repository.AccountTokenRepository;
 import com.dbwb.platform.auth.dto.AuthResponse;
 import com.dbwb.platform.auth.dto.LoginRequest;
 import com.dbwb.platform.auth.dto.RegisterRequest;
+import com.dbwb.platform.common.config.BusinessRuleProperties;
+import com.dbwb.platform.common.config.FrontendProperties;
 import com.dbwb.platform.common.exception.BusinessRuleViolationException;
 import com.dbwb.platform.common.exception.ResourceNotFoundException;
 import com.dbwb.platform.notification.EmailService;
 import com.dbwb.platform.security.JwtService;
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -31,14 +32,12 @@ import java.util.UUID;
 @Service
 public class AuthService {
 
-    private static final long VERIFICATION_TOKEN_TTL_HOURS = 24;
-    private static final long RESET_TOKEN_TTL_MINUTES = 30;
-
     private final AccountRepository accountRepository;
     private final AccountTokenRepository tokenRepository;
     private final PasswordEncoder passwordEncoder;
     private final JwtService jwtService;
     private final EmailService emailService;
+    private final BusinessRuleProperties businessRules;
     private final String publicSiteBaseUrl;
 
     public AuthService(
@@ -47,13 +46,15 @@ public class AuthService {
             PasswordEncoder passwordEncoder,
             JwtService jwtService,
             EmailService emailService,
-            @Value("${dbwb.frontend.public-site-base-url}") String publicSiteBaseUrl) {
+            BusinessRuleProperties businessRules,
+            FrontendProperties frontendProperties) {
         this.accountRepository = accountRepository;
         this.tokenRepository = tokenRepository;
         this.passwordEncoder = passwordEncoder;
         this.jwtService = jwtService;
         this.emailService = emailService;
-        this.publicSiteBaseUrl = publicSiteBaseUrl;
+        this.businessRules = businessRules;
+        this.publicSiteBaseUrl = frontendProperties.getPublicSiteBaseUrl();
     }
 
     @Transactional
@@ -78,7 +79,7 @@ public class AuthService {
         token.setAccount(account);
         token.setType(TokenType.EMAIL_VERIFICATION);
         token.setToken(UUID.randomUUID().toString());
-        token.setExpiresAt(Instant.now().plus(VERIFICATION_TOKEN_TTL_HOURS, ChronoUnit.HOURS));
+        token.setExpiresAt(Instant.now().plus(businessRules.getEmailVerificationTokenTtlHours(), ChronoUnit.HOURS));
         tokenRepository.save(token);
 
         String verifyLink = publicSiteBaseUrl + "/verify-email?token=" + token.getToken();
@@ -133,7 +134,7 @@ public class AuthService {
             token.setAccount(account);
             token.setType(TokenType.PASSWORD_RESET);
             token.setToken(UUID.randomUUID().toString());
-            token.setExpiresAt(Instant.now().plus(RESET_TOKEN_TTL_MINUTES, ChronoUnit.MINUTES));
+            token.setExpiresAt(Instant.now().plus(businessRules.getPasswordResetTokenTtlMinutes(), ChronoUnit.MINUTES));
             tokenRepository.save(token);
 
             String resetLink = publicSiteBaseUrl + "/reset-password?token=" + token.getToken();

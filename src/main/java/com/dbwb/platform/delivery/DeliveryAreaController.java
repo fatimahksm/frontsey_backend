@@ -1,6 +1,7 @@
 package com.dbwb.platform.delivery;
 
 import com.dbwb.platform.common.dto.ApiResponse;
+import com.dbwb.platform.delivery.dto.DeliveryAreaResponse;
 import com.dbwb.platform.security.CurrentAccount;
 import jakarta.validation.constraints.NotBlank;
 import org.springframework.web.bind.annotation.DeleteMapping;
@@ -28,18 +29,19 @@ public class DeliveryAreaController {
     }
 
     @PostMapping
-    public ApiResponse<UUID> create(@PathVariable UUID websiteId,
+    public ApiResponse<DeliveryAreaResponse> create(@PathVariable UUID websiteId,
                                      @RequestParam @NotBlank String name,
                                      @RequestParam BigDecimal fee,
                                      @RequestParam BigDecimal minimumOrder,
                                      @RequestParam(required = false) BigDecimal freeThreshold) {
         var area = service.create(websiteId, currentAccount.get(), name, fee, minimumOrder, freeThreshold);
-        return ApiResponse.ok(area.getId());
+        return ApiResponse.ok(DeliveryAreaResponse.from(area));
     }
 
     @GetMapping
-    public ApiResponse<List<UUID>> list(@PathVariable UUID websiteId) {
-        return ApiResponse.ok(service.list(websiteId, currentAccount.get()).stream().map(a -> a.getId()).toList());
+    public ApiResponse<List<DeliveryAreaResponse>> list(@PathVariable UUID websiteId) {
+        return ApiResponse.ok(service.list(websiteId, currentAccount.get())
+                .stream().map(DeliveryAreaResponse::from).toList());
     }
 
     @DeleteMapping("/{areaId}")

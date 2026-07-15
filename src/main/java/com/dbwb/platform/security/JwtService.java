@@ -1,10 +1,10 @@
 package com.dbwb.platform.security;
 
 import com.dbwb.platform.account.entity.Account;
+import com.dbwb.platform.common.config.JwtProperties;
 import io.jsonwebtoken.Claims;
 import io.jsonwebtoken.Jwts;
 import io.jsonwebtoken.security.Keys;
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 
 import javax.crypto.SecretKey;
@@ -23,11 +23,9 @@ public class JwtService {
     private final SecretKey signingKey;
     private final long accessTokenTtlMinutes;
 
-    public JwtService(
-            @Value("${dbwb.jwt.secret}") String secret,
-            @Value("${dbwb.jwt.access-token-ttl-minutes}") long accessTokenTtlMinutes) {
-        this.signingKey = Keys.hmacShaKeyFor(secret.getBytes());
-        this.accessTokenTtlMinutes = accessTokenTtlMinutes;
+    public JwtService(JwtProperties jwtProperties) {
+        this.signingKey = Keys.hmacShaKeyFor(jwtProperties.getSecret().getBytes());
+        this.accessTokenTtlMinutes = jwtProperties.getAccessTokenTtlMinutes();
     }
 
     public String generateAccessToken(Account account) {
