@@ -59,6 +59,10 @@ dbwb:
   frontend:
     public-site-base-url: ${PUBLIC_SITE_BASE_URL:http://localhost:3000}
 
+  support:
+    # TBD-012: real support mailbox pending business decision.
+    notification-email: ${SUPPORT_NOTIFICATION_EMAIL:support@example.com}
+
 logging:
   level:
     com.dbwb.platform: INFO

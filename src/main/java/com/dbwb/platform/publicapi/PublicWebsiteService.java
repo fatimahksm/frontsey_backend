@@ -17,6 +17,7 @@ import com.dbwb.platform.publicapi.dto.PublicWebsiteResponse;
 import com.dbwb.platform.website.entity.BusinessWebsite;
 import com.dbwb.platform.website.entity.WebsiteStatus;
 import com.dbwb.platform.website.repository.BusinessWebsiteRepository;
+import com.dbwb.platform.website.repository.SeoMetadataRepository;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -44,6 +45,7 @@ public class PublicWebsiteService {
     private final BoxVariantRepository boxVariantRepository;
     private final DeliveryAreaRepository deliveryAreaRepository;
     private final GalleryImageRepository galleryImageRepository;
+    private final SeoMetadataRepository seoMetadataRepository;
 
     public PublicWebsiteService(
             BusinessWebsiteRepository websiteRepository,
@@ -56,7 +58,8 @@ public class PublicWebsiteService {
             AddonRepository addonRepository,
             BoxVariantRepository boxVariantRepository,
             DeliveryAreaRepository deliveryAreaRepository,
-            GalleryImageRepository galleryImageRepository) {
+            GalleryImageRepository galleryImageRepository,
+            SeoMetadataRepository seoMetadataRepository) {
         this.websiteRepository = websiteRepository;
         this.profileRepository = profileRepository;
         this.openingHoursRepository = openingHoursRepository;
@@ -68,6 +71,7 @@ public class PublicWebsiteService {
         this.boxVariantRepository = boxVariantRepository;
         this.deliveryAreaRepository = deliveryAreaRepository;
         this.galleryImageRepository = galleryImageRepository;
+        this.seoMetadataRepository = seoMetadataRepository;
     }
 
     @Transactional(readOnly = true)
@@ -140,9 +144,13 @@ public class PublicWebsiteService {
         List<String> galleryUrls = galleryImageRepository.findByWebsiteIdOrderBySortOrder(website.getId())
                 .stream().map(com.dbwb.platform.gallery.entity.GalleryImage::getImageUrl).toList();
 
+        PublicWebsiteResponse.PublicSeoMetadata seo = seoMetadataRepository.findByWebsiteId(website.getId())
+                .map(s -> new PublicWebsiteResponse.PublicSeoMetadata(s.getMetaTitle(), s.getMetaDescription(), s.getOgImageUrl()))
+                .orElse(new PublicWebsiteResponse.PublicSeoMetadata(website.getBusinessName(), null, null));
+
         return new PublicWebsiteResponse(
                 website.getBusinessName(), website.getSlug(), website.getPageMode(), website.getOrderingMode(),
                 website.getPrimaryLanguage(), website.getCurrency(), website.getPublishedContent(),
-                profile, hours, categories, areas, galleryUrls);
+                profile, hours, categories, areas, galleryUrls, seo);
     }
 }

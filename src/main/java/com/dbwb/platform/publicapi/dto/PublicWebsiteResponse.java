@@ -22,8 +22,12 @@ public record PublicWebsiteResponse(
         List<PublicOpeningHours> openingHours,
         List<PublicCategory> categories,
         List<PublicDeliveryArea> deliveryAreas,
-        List<String> galleryImageUrls
+        List<String> galleryImageUrls,
+        PublicSeoMetadata seo
 ) {
+    public record PublicSeoMetadata(String metaTitle, String metaDescription, String ogImageUrl) {
+    }
+
     public record PublicProfile(
             String description, String logoUrl, String coverImageUrl, String phone, String whatsappNumber,
             String email, String address, String googleMapsUrl, String instagramUrl, String tiktokUrl,
