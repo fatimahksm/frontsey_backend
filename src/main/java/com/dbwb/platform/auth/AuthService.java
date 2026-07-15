@@ -117,7 +117,9 @@ public class AuthService {
             throw new BusinessRuleViolationException("Please verify your email before logging in.");
         }
 
-        if (account.getStatus() != AccountStatus.ACTIVE) {
+        // BR-AUTH-006: a disabled-pending-deletion account can still log in - that's how its
+        // Owner reaches AccountService.cancelDeletion() to recover it within the retention window.
+        if (account.getStatus() != AccountStatus.ACTIVE && account.getStatus() != AccountStatus.DISABLED_PENDING_DELETION) {
             throw new BusinessRuleViolationException("This account is not active.");
         }
 

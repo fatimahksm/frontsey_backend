@@ -97,6 +97,14 @@ public class MenuController {
         return ApiResponse.ok(null, "Item moved to trash.");
     }
 
+    /** BR-MENU-006: today-only/relative/exact date-time are all just a resolved instant by the time they reach the API. */
+    @PutMapping("/items/{itemId}/temporary-unavailability")
+    public ApiResponse<MenuItemResponse> setTemporaryUnavailability(@PathVariable UUID websiteId, @PathVariable UUID itemId,
+                                                                     @RequestParam java.time.Instant until) {
+        var item = menuService.setTemporaryUnavailability(websiteId, itemId, currentAccount.get(), until);
+        return ApiResponse.ok(MenuItemResponse.from(item), "Item marked temporarily unavailable.");
+    }
+
     @PostMapping("/items/{itemId}/restore")
     public ApiResponse<Void> restoreItem(@PathVariable UUID websiteId, @PathVariable UUID itemId) {
         menuService.restoreItem(websiteId, itemId, currentAccount.get());
