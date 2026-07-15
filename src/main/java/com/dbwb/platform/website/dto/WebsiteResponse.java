@@ -19,12 +19,14 @@ public record WebsiteResponse(
         String currency,
         String draftContent,
         String publishedContent,
-        Instant publishedAt
+        Instant publishedAt,
+        UUID themeId
 ) {
     public static WebsiteResponse from(BusinessWebsite w) {
         return new WebsiteResponse(
                 w.getId(), w.getBusinessName(), w.getSlug(), w.getPageMode(), w.getOrderingMode(),
                 w.getStatus(), w.getPrimaryLanguage(), w.getCurrency(),
-                w.getDraftContent(), w.getPublishedContent(), w.getPublishedAt());
+                w.getDraftContent(), w.getPublishedContent(), w.getPublishedAt(),
+                w.getTheme() != null ? w.getTheme().getId() : null);
     }
 }

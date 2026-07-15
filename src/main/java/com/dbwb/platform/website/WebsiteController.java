@@ -4,6 +4,7 @@ import com.dbwb.platform.common.dto.ApiResponse;
 import com.dbwb.platform.security.CurrentAccount;
 import com.dbwb.platform.website.dto.CreateWebsiteRequest;
 import com.dbwb.platform.website.dto.UpdateDraftContentRequest;
+import com.dbwb.platform.website.dto.UpdateThemeRequest;
 import com.dbwb.platform.website.dto.WebsiteResponse;
 import jakarta.validation.Valid;
 import org.springframework.web.bind.annotation.DeleteMapping;
@@ -51,6 +52,12 @@ public class WebsiteController {
     public ApiResponse<WebsiteResponse> saveDraft(@PathVariable UUID id, @Valid @RequestBody UpdateDraftContentRequest request) {
         var website = websiteService.saveDraft(id, currentAccount.get(), request);
         return ApiResponse.ok(WebsiteResponse.from(website), "Draft saved.");
+    }
+
+    @PutMapping("/{id}/theme")
+    public ApiResponse<WebsiteResponse> updateTheme(@PathVariable UUID id, @RequestBody UpdateThemeRequest request) {
+        var website = websiteService.updateTheme(id, currentAccount.get(), request.themeId());
+        return ApiResponse.ok(WebsiteResponse.from(website), "Theme updated.");
     }
 
     @PostMapping("/{id}/publish")

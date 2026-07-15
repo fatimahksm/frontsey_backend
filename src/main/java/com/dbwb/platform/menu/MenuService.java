@@ -159,6 +159,13 @@ public class MenuService {
         return menuItemRepository.findByWebsiteIdAndTrashedAtIsNull(websiteId);
     }
 
+    /** BR-MENU-011: what's currently in the trash, so the Owner has something to restore() from. */
+    @Transactional(readOnly = true)
+    public List<MenuItem> listTrashedItems(UUID websiteId, AuthenticatedAccount caller) {
+        accessGuard.requireReadAccess(websiteId, caller);
+        return menuItemRepository.findByWebsiteIdAndTrashedAtIsNotNull(websiteId);
+    }
+
     /** BR-MENU-011: soft-delete into trash; permanent purge happens via a scheduled job after the retention window. */
     @Transactional
     public void trashItem(UUID websiteId, UUID itemId, AuthenticatedAccount caller) {

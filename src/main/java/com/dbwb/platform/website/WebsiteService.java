@@ -101,6 +101,7 @@ public class WebsiteService {
         BusinessWebsite website = accessGuard.requirePermission(
                 websiteId, caller, com.dbwb.platform.manager.entity.Permission.MANAGE_THEME_AND_CONTENT);
         website.setDraftContent(request.content());
+        website.setOrderingMode(request.orderingMode());
         return website;
     }
 
@@ -130,6 +131,21 @@ public class WebsiteService {
         website.setStatus(WebsiteStatus.PUBLISHED);
 
         auditService.record(caller.accountId(), "WEBSITE_PUBLISHED", website.getId().toString());
+        return website;
+    }
+
+    /** BR-SITE-002: switch themes post-creation, or clear it (themeId = null) to go back to build-from-scratch. */
+    @Transactional
+    public BusinessWebsite updateTheme(UUID websiteId, AuthenticatedAccount caller, UUID themeId) {
+        BusinessWebsite website = accessGuard.requirePermission(
+                websiteId, caller, com.dbwb.platform.manager.entity.Permission.MANAGE_THEME_AND_CONTENT);
+        if (themeId == null) {
+            website.setTheme(null);
+            return website;
+        }
+        Theme theme = themeRepository.findById(themeId)
+                .orElseThrow(() -> new ResourceNotFoundException("Theme not found."));
+        website.setTheme(theme);
         return website;
     }
 

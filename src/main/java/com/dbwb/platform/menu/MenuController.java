@@ -97,6 +97,12 @@ public class MenuController {
         return ApiResponse.ok(null, "Item moved to trash.");
     }
 
+    @GetMapping("/items/trash")
+    public ApiResponse<List<MenuItemResponse>> listTrashedItems(@PathVariable UUID websiteId) {
+        return ApiResponse.ok(menuService.listTrashedItems(websiteId, currentAccount.get())
+                .stream().map(MenuItemResponse::from).toList());
+    }
+
     /** BR-MENU-006: today-only/relative/exact date-time are all just a resolved instant by the time they reach the API. */
     @PutMapping("/items/{itemId}/temporary-unavailability")
     public ApiResponse<MenuItemResponse> setTemporaryUnavailability(@PathVariable UUID websiteId, @PathVariable UUID itemId,

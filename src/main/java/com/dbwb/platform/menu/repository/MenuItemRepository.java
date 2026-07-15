@@ -12,6 +12,9 @@ public interface MenuItemRepository extends JpaRepository<MenuItem, UUID> {
 
     List<MenuItem> findByWebsiteIdAndTrashedAtIsNull(UUID websiteId);
 
+    /** BR-MENU-011: lets the Owner see what's in the trash to decide what to restore. */
+    List<MenuItem> findByWebsiteIdAndTrashedAtIsNotNull(UUID websiteId);
+
     List<MenuItem> findByWebsiteIdAndCategoryIdAndTrashedAtIsNull(UUID websiteId, UUID categoryId);
 
     List<MenuItem> findByWebsiteIdAndNameContainingIgnoreCaseAndTrashedAtIsNull(UUID websiteId, String name);
