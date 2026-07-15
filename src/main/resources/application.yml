@@ -75,6 +75,14 @@ dbwb:
     bootstrap-email: ${ADMIN_BOOTSTRAP_EMAIL:}
     bootstrap-password: ${ADMIN_BOOTSTRAP_PASSWORD:}
 
+  uploads:
+    directory: ${UPLOAD_DIRECTORY:uploads}
+    max-file-size-mb: ${UPLOAD_MAX_FILE_SIZE_MB:5}
+
+  ai:
+    openrouter-api-key: ${OPENROUTER_API_KEY:}
+    model: ${OPENROUTER_MODEL:deepseek/deepseek-chat}
+
 logging:
   level:
     com.dbwb.platform: INFO

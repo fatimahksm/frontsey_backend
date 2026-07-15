@@ -44,6 +44,9 @@ public class SecurityConfig {
                         .requestMatchers("/api/auth/**").permitAll()
                         .requestMatchers("/api/public/**").permitAll()
                         .requestMatchers("/actuator/health").permitAll()
+                        // Uploaded images are shown on public storefronts, so the files
+                        // themselves are public - only POSTing a new one requires auth.
+                        .requestMatchers("/uploads/**").permitAll()
                         // Everything else requires a valid access token; per-endpoint role
                         // and tenant-ownership checks are enforced in the service layer.
                         .anyRequest().authenticated())

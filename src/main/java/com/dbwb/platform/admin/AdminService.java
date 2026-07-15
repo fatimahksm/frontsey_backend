@@ -3,10 +3,16 @@ package com.dbwb.platform.admin;
 import com.dbwb.platform.account.entity.Role;
 import com.dbwb.platform.account.repository.AccountRepository;
 import com.dbwb.platform.admin.dto.AdminDashboardResponse;
+import com.dbwb.platform.admin.dto.AdminWebsiteUpdateRequest;
+import com.dbwb.platform.admin.dto.AuditLogResponse;
 import com.dbwb.platform.admin.dto.PlanUpdateRequest;
 import com.dbwb.platform.admin.dto.SuspendWebsiteRequest;
 import com.dbwb.platform.admin.dto.ThemeRequest;
+import com.dbwb.platform.admin.dto.UpdateUserRoleRequest;
 import com.dbwb.platform.audit.AuditService;
+import com.dbwb.platform.audit.entity.AuditLog;
+import com.dbwb.platform.audit.repository.AuditLogRepository;
+import com.dbwb.platform.account.entity.AccountStatus;
 import com.dbwb.platform.common.exception.AccessDeniedForTenantException;
 import com.dbwb.platform.common.exception.BusinessRuleViolationException;
 import com.dbwb.platform.common.exception.ResourceNotFoundException;
@@ -32,7 +38,9 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 
 /**
@@ -53,6 +61,7 @@ public class AdminService {
     private final SupportService supportService;
     private final EmailService emailService;
     private final AuditService auditService;
+    private final AuditLogRepository auditLogRepository;
 
     public AdminService(
             AccountRepository accountRepository,
@@ -63,7 +72,8 @@ public class AdminService {
             MockPaymentRepository mockPaymentRepository,
             SupportService supportService,
             EmailService emailService,
-            AuditService auditService) {
+            AuditService auditService,
+            AuditLogRepository auditLogRepository) {
         this.accountRepository = accountRepository;
         this.websiteRepository = websiteRepository;
         this.themeRepository = themeRepository;
@@ -73,6 +83,7 @@ public class AdminService {
         this.supportService = supportService;
         this.emailService = emailService;
         this.auditService = auditService;
+        this.auditLogRepository = auditLogRepository;
     }
 
     // --- BR-ADM-001: platform-wide visibility ---
@@ -101,6 +112,44 @@ public class AdminService {
                 subscriptionRepository.findByStatusAndEndDateBetween(
                         SubscriptionStatus.ACTIVE, now, now.plus(7, ChronoUnit.DAYS)).size(),
                 mockPaymentRepository.totalRevenue());
+    }
+
+    // --- direct user management, requested alongside suspend/reactivate ---
+
+    @Transactional
+    public Account updateUserRole(UUID accountId, AuthenticatedAccount caller, UpdateUserRoleRequest request) {
+        requireSuperAdmin(caller);
+        Account account = loadAccount(accountId);
+        account.setRole(request.role());
+        auditService.record(caller.accountId(), "USER_ROLE_UPDATED", accountId + " -> " + request.role());
+        return account;
+    }
+
+    /** Reuses the same disable-then-permanently-delete-after-retention lifecycle as self-service deletion (AccountService.requestDeletion). */
+    @Transactional
+    public Account disableUser(UUID accountId, AuthenticatedAccount caller) {
+        requireSuperAdmin(caller);
+        Account account = loadAccount(accountId);
+        account.setStatus(AccountStatus.DISABLED_PENDING_DELETION);
+        account.setDisabledAt(Instant.now());
+
+        emailService.send(account.getEmail(), "Your account has been disabled",
+                "Your account has been disabled by the platform. Contact support if you believe this is a mistake.");
+        auditService.record(caller.accountId(), "USER_DISABLED_BY_ADMIN", accountId.toString());
+        return account;
+    }
+
+    @Transactional
+    public Account reactivateUser(UUID accountId, AuthenticatedAccount caller) {
+        requireSuperAdmin(caller);
+        Account account = loadAccount(accountId);
+        if (account.getStatus() != AccountStatus.DISABLED_PENDING_DELETION) {
+            throw new BusinessRuleViolationException("This account is not currently disabled.");
+        }
+        account.setStatus(AccountStatus.ACTIVE);
+        account.setDisabledAt(null);
+        auditService.record(caller.accountId(), "USER_REACTIVATED_BY_ADMIN", accountId.toString());
+        return account;
     }
 
     // --- BR-ADM-002..005: suspend / reactivate ---
@@ -136,6 +185,27 @@ public class AdminService {
                 "\"" + website.getBusinessName() + "\" is available again.");
         auditService.record(caller.accountId(), "WEBSITE_REACTIVATED", websiteId.toString());
         return website;
+    }
+
+    /** Direct edit, beyond suspend/reactivate - deliberately narrow (just the display name) since deeper edits (slug, template type) have wider blast radius on SEO/analytics/content. */
+    @Transactional
+    public BusinessWebsite updateWebsiteDetails(UUID websiteId, AuthenticatedAccount caller, AdminWebsiteUpdateRequest request) {
+        requireSuperAdmin(caller);
+        BusinessWebsite website = loadWebsite(websiteId);
+        website.setBusinessName(request.businessName());
+        auditService.record(caller.accountId(), "WEBSITE_UPDATED_BY_ADMIN", websiteId.toString());
+        return website;
+    }
+
+    @Transactional
+    public void deleteWebsite(UUID websiteId, AuthenticatedAccount caller) {
+        requireSuperAdmin(caller);
+        BusinessWebsite website = loadWebsite(websiteId);
+        website.setStatus(WebsiteStatus.DELETED);
+
+        emailService.send(website.getOwner().getEmail(), "Your website has been deleted",
+                "\"" + website.getBusinessName() + "\" has been permanently deleted by the platform.");
+        auditService.record(caller.accountId(), "WEBSITE_DELETED_BY_ADMIN", websiteId.toString());
     }
 
     /** Called by the same scheduled job class as subscription maintenance - automatic reactivation for temporary suspensions. */
@@ -231,6 +301,22 @@ public class AdminService {
         return supportService.updateStatus(ticketId, status);
     }
 
+    // --- BR-AUD-001: audit trail visibility ---
+
+    @Transactional(readOnly = true)
+    public List<AuditLogResponse> listAuditLogs(AuthenticatedAccount caller) {
+        requireSuperAdmin(caller);
+        List<AuditLog> logs = auditLogRepository.findAllByOrderByCreatedAtDesc();
+
+        Map<UUID, String> emailByAccountId = new HashMap<>();
+        accountRepository.findAllById(logs.stream().map(AuditLog::getActorAccountId).distinct().toList())
+                .forEach(account -> emailByAccountId.put(account.getId(), account.getEmail()));
+
+        return logs.stream()
+                .map(log -> AuditLogResponse.from(log, emailByAccountId.get(log.getActorAccountId())))
+                .toList();
+    }
+
     private void applyThemeRequest(Theme theme, ThemeRequest request) {
         theme.setName(request.name());
         theme.setDescription(request.description());
@@ -241,6 +327,11 @@ public class AdminService {
     private BusinessWebsite loadWebsite(UUID websiteId) {
         return websiteRepository.findById(websiteId)
                 .orElseThrow(() -> new ResourceNotFoundException("Website not found."));
+    }
+
+    private Account loadAccount(UUID accountId) {
+        return accountRepository.findById(accountId)
+                .orElseThrow(() -> new ResourceNotFoundException("Account not found."));
     }
 
     private void requireSuperAdmin(AuthenticatedAccount caller) {

@@ -1,6 +1,7 @@
 package com.dbwb.platform.website;
 
 import com.dbwb.platform.common.dto.ApiResponse;
+import com.dbwb.platform.publicapi.dto.PublicWebsiteResponse;
 import com.dbwb.platform.security.CurrentAccount;
 import com.dbwb.platform.website.dto.CreateWebsiteRequest;
 import com.dbwb.platform.website.dto.UpdateDraftContentRequest;
@@ -46,6 +47,11 @@ public class WebsiteController {
     @GetMapping("/{id}")
     public ApiResponse<WebsiteResponse> get(@PathVariable UUID id) {
         return ApiResponse.ok(WebsiteResponse.from(websiteService.get(id, currentAccount.get())));
+    }
+
+    @GetMapping("/{id}/preview")
+    public ApiResponse<PublicWebsiteResponse> preview(@PathVariable UUID id) {
+        return ApiResponse.ok(websiteService.getPreview(id, currentAccount.get()));
     }
 
     @PutMapping("/{id}/draft")

@@ -3,9 +3,12 @@ package com.dbwb.platform.admin;
 import com.dbwb.platform.admin.dto.AccountSummaryResponse;
 import com.dbwb.platform.admin.dto.AdminDashboardResponse;
 import com.dbwb.platform.admin.dto.AdminWebsiteSummaryResponse;
+import com.dbwb.platform.admin.dto.AdminWebsiteUpdateRequest;
+import com.dbwb.platform.admin.dto.AuditLogResponse;
 import com.dbwb.platform.admin.dto.PlanUpdateRequest;
 import com.dbwb.platform.admin.dto.SuspendWebsiteRequest;
 import com.dbwb.platform.admin.dto.ThemeRequest;
+import com.dbwb.platform.admin.dto.UpdateUserRoleRequest;
 import com.dbwb.platform.common.dto.ApiResponse;
 import com.dbwb.platform.plan.dto.PlanResponse;
 import com.dbwb.platform.security.CurrentAccount;
@@ -50,9 +53,39 @@ public class AdminController {
         return ApiResponse.ok(adminService.listUsers(currentAccount.get()).stream().map(AccountSummaryResponse::from).toList());
     }
 
+    @PutMapping("/users/{accountId}/role")
+    public ApiResponse<AccountSummaryResponse> updateUserRole(@PathVariable UUID accountId, @Valid @RequestBody UpdateUserRoleRequest request) {
+        var account = adminService.updateUserRole(accountId, currentAccount.get(), request);
+        return ApiResponse.ok(AccountSummaryResponse.from(account), "Role updated.");
+    }
+
+    @PostMapping("/users/{accountId}/disable")
+    public ApiResponse<AccountSummaryResponse> disableUser(@PathVariable UUID accountId) {
+        var account = adminService.disableUser(accountId, currentAccount.get());
+        return ApiResponse.ok(AccountSummaryResponse.from(account), "Account disabled.");
+    }
+
+    @PostMapping("/users/{accountId}/reactivate")
+    public ApiResponse<AccountSummaryResponse> reactivateUser(@PathVariable UUID accountId) {
+        var account = adminService.reactivateUser(accountId, currentAccount.get());
+        return ApiResponse.ok(AccountSummaryResponse.from(account), "Account reactivated.");
+    }
+
     @GetMapping("/websites")
     public ApiResponse<List<AdminWebsiteSummaryResponse>> listWebsites() {
         return ApiResponse.ok(adminService.listWebsites(currentAccount.get()).stream().map(AdminWebsiteSummaryResponse::from).toList());
+    }
+
+    @PutMapping("/websites/{websiteId}")
+    public ApiResponse<WebsiteResponse> updateWebsite(@PathVariable UUID websiteId, @Valid @RequestBody AdminWebsiteUpdateRequest request) {
+        var website = adminService.updateWebsiteDetails(websiteId, currentAccount.get(), request);
+        return ApiResponse.ok(WebsiteResponse.from(website), "Website updated.");
+    }
+
+    @DeleteMapping("/websites/{websiteId}")
+    public ApiResponse<Void> deleteWebsite(@PathVariable UUID websiteId) {
+        adminService.deleteWebsite(websiteId, currentAccount.get());
+        return ApiResponse.ok(null, "Website deleted.");
     }
 
     @PostMapping("/websites/{websiteId}/suspend")
@@ -110,5 +143,10 @@ public class AdminController {
     public ApiResponse<SupportTicketResponse> updateSupportTicketStatus(@PathVariable UUID ticketId, @RequestParam SupportTicketStatus status) {
         var ticket = adminService.updateSupportTicketStatus(currentAccount.get(), ticketId, status);
         return ApiResponse.ok(SupportTicketResponse.from(ticket), "Support ticket status updated.");
+    }
+
+    @GetMapping("/audit-log")
+    public ApiResponse<List<AuditLogResponse>> listAuditLogs() {
+        return ApiResponse.ok(adminService.listAuditLogs(currentAccount.get()));
     }
 }

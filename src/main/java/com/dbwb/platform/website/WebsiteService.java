@@ -5,6 +5,8 @@ import com.dbwb.platform.common.exception.BusinessRuleViolationException;
 import com.dbwb.platform.common.exception.ResourceNotFoundException;
 import com.dbwb.platform.portfolio.repository.ServiceItemRepository;
 import com.dbwb.platform.profile.repository.BusinessProfileRepository;
+import com.dbwb.platform.publicapi.PublicWebsiteService;
+import com.dbwb.platform.publicapi.dto.PublicWebsiteResponse;
 import com.dbwb.platform.security.AuthenticatedAccount;
 import com.dbwb.platform.subscription.SubscriptionQueryService;
 import com.dbwb.platform.theme.entity.Theme;
@@ -41,6 +43,7 @@ public class WebsiteService {
     private final WebsiteAccessGuard accessGuard;
     private final SubscriptionQueryService subscriptionQueryService;
     private final AuditService auditService;
+    private final PublicWebsiteService publicWebsiteService;
 
     public WebsiteService(
             BusinessWebsiteRepository websiteRepository,
@@ -52,7 +55,8 @@ public class WebsiteService {
             SlugGenerator slugGenerator,
             WebsiteAccessGuard accessGuard,
             SubscriptionQueryService subscriptionQueryService,
-            AuditService auditService) {
+            AuditService auditService,
+            PublicWebsiteService publicWebsiteService) {
         this.websiteRepository = websiteRepository;
         this.themeRepository = themeRepository;
         this.accountRepository = accountRepository;
@@ -63,6 +67,7 @@ public class WebsiteService {
         this.accessGuard = accessGuard;
         this.subscriptionQueryService = subscriptionQueryService;
         this.auditService = auditService;
+        this.publicWebsiteService = publicWebsiteService;
     }
 
     @Transactional
@@ -100,6 +105,13 @@ public class WebsiteService {
     @Transactional(readOnly = true)
     public BusinessWebsite get(UUID websiteId, AuthenticatedAccount caller) {
         return accessGuard.requireReadAccess(websiteId, caller);
+    }
+
+    /** Lets the owner/a manager see the current draft rendered exactly as customers would see it, before publishing. */
+    @Transactional(readOnly = true)
+    public PublicWebsiteResponse getPreview(UUID websiteId, AuthenticatedAccount caller) {
+        BusinessWebsite website = accessGuard.requireReadAccess(websiteId, caller);
+        return publicWebsiteService.assembleForPreview(website);
     }
 
     @Transactional

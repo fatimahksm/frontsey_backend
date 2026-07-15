@@ -93,13 +93,19 @@ public class PublicWebsiteService {
         }
 
         return switch (website.getStatus()) {
-            case PUBLISHED -> PublicWebsiteEnvelope.available(assemble(website));
+            case PUBLISHED -> PublicWebsiteEnvelope.available(assemble(website, website.getPublishedContent()));
             case SUSPENDED_TEMPORARY, SUSPENDED_PERMANENT, EXPIRED -> PublicWebsiteEnvelope.unavailable();
             case DRAFT, TRASHED, DELETED -> PublicWebsiteEnvelope.notFound();
         };
     }
 
-    private PublicWebsiteResponse assemble(BusinessWebsite website) {
+    /** Owner/manager preview of the current draft, regardless of publish status - access is gated by the caller (see WebsiteAccessGuard at the call site). */
+    @Transactional(readOnly = true)
+    public PublicWebsiteResponse assembleForPreview(BusinessWebsite website) {
+        return assemble(website, website.getDraftContent());
+    }
+
+    private PublicWebsiteResponse assemble(BusinessWebsite website, String content) {
         var profileEntity = profileRepository.findByWebsiteId(website.getId()).orElse(null);
         PublicWebsiteResponse.PublicProfile profile = null;
         if (profileEntity != null) {
@@ -168,6 +174,6 @@ public class PublicWebsiteService {
         return new PublicWebsiteResponse(
                 website.getBusinessName(), website.getSlug(), website.getPageMode(), website.getTemplateType(),
                 website.getOrderingMode(), website.getPrimaryLanguage(), website.getCurrency(),
-                website.getPublishedContent(), profile, hours, categories, areas, services, galleryUrls, seo);
+                content, profile, hours, categories, areas, services, galleryUrls, seo);
     }
 }
