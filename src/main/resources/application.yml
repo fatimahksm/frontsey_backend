@@ -21,6 +21,12 @@ spring:
     enabled: true
     locations: classpath:db/migration
 
+  servlet:
+    multipart:
+      # Menu import (9.8) is the only upload path today; sized for a large CSV, not media.
+      max-file-size: ${MENU_IMPORT_MAX_FILE_SIZE_MB:10}MB
+      max-request-size: ${MENU_IMPORT_MAX_FILE_SIZE_MB:10}MB
+
   mail:
     host: ${MAIL_HOST:smtp.example.com}
     port: ${MAIL_PORT:587}

@@ -20,4 +20,7 @@ public interface MenuItemRepository extends JpaRepository<MenuItem, UUID> {
 
     /** BR-MENU-006: items whose temporary-unavailability window has elapsed and must revert automatically. */
     List<MenuItem> findByAvailabilityAndUnavailableUntilBefore(ItemAvailability availability, Instant instant);
+
+    /** BR-IMP-003: used to detect a duplicate item name during menu import. */
+    java.util.Optional<MenuItem> findByWebsiteIdAndNameIgnoreCaseAndTrashedAtIsNull(UUID websiteId, String name);
 }
