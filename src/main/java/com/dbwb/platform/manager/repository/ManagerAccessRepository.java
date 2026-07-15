@@ -13,4 +13,7 @@ public interface ManagerAccessRepository extends JpaRepository<ManagerAccess, UU
     List<ManagerAccess> findByManagerAccountIdAndStatus(UUID managerAccountId, InvitationStatus status);
     Optional<ManagerAccess> findByWebsiteIdAndManagerAccountId(UUID websiteId, UUID managerAccountId);
     long countByWebsiteIdAndStatus(UUID websiteId, InvitationStatus status);
+
+    /** BR-MGR-002: pending invitations sent before the invitee had an account, keyed by the email they were invited at. */
+    List<ManagerAccess> findByInvitedEmailIgnoreCaseAndStatus(String invitedEmail, InvitationStatus status);
 }

@@ -88,13 +88,14 @@ public class ManagerService {
         return access;
     }
 
-    /** Called after a new Account finishes email verification, to auto-link any pending invitations (BR-MGR-002). */
+    /** Called right after a new Account is created, to auto-link any invitations sent before it existed (BR-MGR-002). */
     @Transactional
     public void linkPendingInvitationsForNewAccount(Account account) {
-        managerAccessRepository.findByManagerAccountIdAndStatus(account.getId(), InvitationStatus.PENDING);
-        // Pending rows are keyed by invitedEmail until acceptance; a production
-        // implementation looks them up by invitedEmail here and attaches
-        // managerAccount + flips status to ACCEPTED.
+        managerAccessRepository.findByInvitedEmailIgnoreCaseAndStatus(account.getEmail(), InvitationStatus.PENDING)
+                .forEach(access -> {
+                    access.setManagerAccount(account);
+                    access.setStatus(InvitationStatus.ACCEPTED);
+                });
     }
 
     @Transactional(readOnly = true)

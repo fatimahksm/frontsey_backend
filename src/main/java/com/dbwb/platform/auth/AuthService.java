@@ -14,6 +14,7 @@ import com.dbwb.platform.common.config.BusinessRuleProperties;
 import com.dbwb.platform.common.config.FrontendProperties;
 import com.dbwb.platform.common.exception.BusinessRuleViolationException;
 import com.dbwb.platform.common.exception.ResourceNotFoundException;
+import com.dbwb.platform.manager.ManagerService;
 import com.dbwb.platform.notification.EmailService;
 import com.dbwb.platform.security.JwtService;
 import org.springframework.security.crypto.password.PasswordEncoder;
@@ -38,6 +39,7 @@ public class AuthService {
     private final JwtService jwtService;
     private final EmailService emailService;
     private final BusinessRuleProperties businessRules;
+    private final ManagerService managerService;
     private final String publicSiteBaseUrl;
 
     public AuthService(
@@ -47,6 +49,7 @@ public class AuthService {
             JwtService jwtService,
             EmailService emailService,
             BusinessRuleProperties businessRules,
+            ManagerService managerService,
             FrontendProperties frontendProperties) {
         this.accountRepository = accountRepository;
         this.tokenRepository = tokenRepository;
@@ -54,6 +57,7 @@ public class AuthService {
         this.jwtService = jwtService;
         this.emailService = emailService;
         this.businessRules = businessRules;
+        this.managerService = managerService;
         this.publicSiteBaseUrl = frontendProperties.getPublicSiteBaseUrl();
     }
 
@@ -70,6 +74,9 @@ public class AuthService {
         account.setRole(Role.BUSINESS_OWNER); // self-registration is always as a Business Owner
         account.setStatus(AccountStatus.PENDING_VERIFICATION);
         accountRepository.save(account);
+
+        // BR-MGR-002: attach any Manager invitations sent to this email before the account existed.
+        managerService.linkPendingInvitationsForNewAccount(account);
 
         issueVerificationEmail(account);
     }
