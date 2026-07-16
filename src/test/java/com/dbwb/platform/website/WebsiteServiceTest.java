@@ -13,6 +13,7 @@ import com.dbwb.platform.subscription.SubscriptionQueryService;
 import com.dbwb.platform.testsupport.TestEntities;
 import com.dbwb.platform.theme.repository.ThemeRepository;
 import com.dbwb.platform.website.entity.BusinessWebsite;
+import com.dbwb.platform.website.entity.LayoutVariant;
 import com.dbwb.platform.website.entity.PageMode;
 import com.dbwb.platform.website.entity.TemplateType;
 import com.dbwb.platform.website.entity.WebsiteStatus;
@@ -131,5 +132,37 @@ class WebsiteServiceTest {
         websiteService.publish(websiteId, owner);
 
         org.mockito.Mockito.verifyNoInteractions(categoryRepository);
+    }
+
+    @Test
+    void unsetLayoutVariantDefaultsToClassicForMenuOrdering() {
+        website.setTemplateType(TemplateType.MENU_ORDERING);
+
+        assertThat(website.getEffectiveLayoutVariant()).isEqualTo(LayoutVariant.MENU_CLASSIC);
+    }
+
+    @Test
+    void unsetLayoutVariantDefaultsToHeroForPortfolio() {
+        website.setTemplateType(TemplateType.PORTFOLIO);
+
+        assertThat(website.getEffectiveLayoutVariant()).isEqualTo(LayoutVariant.PORTFOLIO_HERO);
+    }
+
+    @Test
+    void ownerCanSwitchToTheOtherValidLayoutForTheirTemplateType() {
+        website.setTemplateType(TemplateType.MENU_ORDERING);
+
+        BusinessWebsite updated = websiteService.updateLayoutVariant(websiteId, owner, LayoutVariant.MENU_GRID);
+
+        assertThat(updated.getEffectiveLayoutVariant()).isEqualTo(LayoutVariant.MENU_GRID);
+    }
+
+    @Test
+    void cannotSwitchToALayoutThatBelongsToTheOtherTemplateType() {
+        website.setTemplateType(TemplateType.MENU_ORDERING);
+
+        assertThatThrownBy(() -> websiteService.updateLayoutVariant(websiteId, owner, LayoutVariant.PORTFOLIO_HERO))
+                .isInstanceOf(BusinessRuleViolationException.class)
+                .hasMessageContaining("not a valid layout");
     }
 }

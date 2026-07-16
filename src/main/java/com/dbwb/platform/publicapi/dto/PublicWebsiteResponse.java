@@ -1,5 +1,6 @@
 package com.dbwb.platform.publicapi.dto;
 
+import com.dbwb.platform.website.entity.LayoutVariant;
 import com.dbwb.platform.website.entity.OrderingMode;
 import com.dbwb.platform.website.entity.PageMode;
 import com.dbwb.platform.website.entity.TemplateType;
@@ -17,6 +18,7 @@ public record PublicWebsiteResponse(
         String slug,
         PageMode pageMode,
         TemplateType templateType,
+        LayoutVariant layoutVariant,
         OrderingMode orderingMode,
         String primaryLanguage,
         String currency,

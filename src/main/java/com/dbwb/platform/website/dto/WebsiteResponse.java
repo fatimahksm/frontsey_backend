@@ -1,6 +1,7 @@
 package com.dbwb.platform.website.dto;
 
 import com.dbwb.platform.website.entity.BusinessWebsite;
+import com.dbwb.platform.website.entity.LayoutVariant;
 import com.dbwb.platform.website.entity.OrderingMode;
 import com.dbwb.platform.website.entity.PageMode;
 import com.dbwb.platform.website.entity.TemplateType;
@@ -15,6 +16,7 @@ public record WebsiteResponse(
         String slug,
         PageMode pageMode,
         TemplateType templateType,
+        LayoutVariant layoutVariant,
         OrderingMode orderingMode,
         WebsiteStatus status,
         String primaryLanguage,
@@ -26,7 +28,8 @@ public record WebsiteResponse(
 ) {
     public static WebsiteResponse from(BusinessWebsite w) {
         return new WebsiteResponse(
-                w.getId(), w.getBusinessName(), w.getSlug(), w.getPageMode(), w.getTemplateType(), w.getOrderingMode(),
+                w.getId(), w.getBusinessName(), w.getSlug(), w.getPageMode(), w.getTemplateType(),
+                w.getEffectiveLayoutVariant(), w.getOrderingMode(),
                 w.getStatus(), w.getPrimaryLanguage(), w.getCurrency(),
                 w.getDraftContent(), w.getPublishedContent(), w.getPublishedAt(),
                 w.getTheme() != null ? w.getTheme().getId() : null);

@@ -167,6 +167,19 @@ public class WebsiteService {
         return website;
     }
 
+    /** Layout is a structural choice, not just styling - switchable anytime, same as Theme, but scoped to the website's current TemplateType. */
+    @Transactional
+    public BusinessWebsite updateLayoutVariant(UUID websiteId, AuthenticatedAccount caller, com.dbwb.platform.website.entity.LayoutVariant layoutVariant) {
+        BusinessWebsite website = accessGuard.requirePermission(
+                websiteId, caller, com.dbwb.platform.manager.entity.Permission.MANAGE_THEME_AND_CONTENT);
+        if (layoutVariant.templateType() != website.getTemplateType()) {
+            throw new BusinessRuleViolationException(
+                    "\"" + layoutVariant + "\" is not a valid layout for a " + website.getTemplateType() + " website.");
+        }
+        website.setLayoutVariant(layoutVariant);
+        return website;
+    }
+
     /** BR-THEME-007: restore the immediately previous published version. */
     @Transactional
     public BusinessWebsite restorePreviousVersion(UUID websiteId, AuthenticatedAccount caller) {

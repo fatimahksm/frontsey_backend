@@ -5,6 +5,7 @@ import com.dbwb.platform.publicapi.dto.PublicWebsiteResponse;
 import com.dbwb.platform.security.CurrentAccount;
 import com.dbwb.platform.website.dto.CreateWebsiteRequest;
 import com.dbwb.platform.website.dto.UpdateDraftContentRequest;
+import com.dbwb.platform.website.dto.UpdateLayoutVariantRequest;
 import com.dbwb.platform.website.dto.UpdateThemeRequest;
 import com.dbwb.platform.website.dto.WebsiteResponse;
 import jakarta.validation.Valid;
@@ -64,6 +65,12 @@ public class WebsiteController {
     public ApiResponse<WebsiteResponse> updateTheme(@PathVariable UUID id, @RequestBody UpdateThemeRequest request) {
         var website = websiteService.updateTheme(id, currentAccount.get(), request.themeId());
         return ApiResponse.ok(WebsiteResponse.from(website), "Theme updated.");
+    }
+
+    @PutMapping("/{id}/layout")
+    public ApiResponse<WebsiteResponse> updateLayoutVariant(@PathVariable UUID id, @Valid @RequestBody UpdateLayoutVariantRequest request) {
+        var website = websiteService.updateLayoutVariant(id, currentAccount.get(), request.layoutVariant());
+        return ApiResponse.ok(WebsiteResponse.from(website), "Layout updated.");
     }
 
     @PostMapping("/{id}/publish")

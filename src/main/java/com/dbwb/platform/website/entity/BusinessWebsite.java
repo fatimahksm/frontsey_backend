@@ -50,6 +50,11 @@ public class BusinessWebsite extends BaseEntity {
     @Column(nullable = false)
     private TemplateType templateType = TemplateType.MENU_ORDERING;
 
+    /** Null means "use the default for this templateType" - see LayoutVariant.defaultFor. */
+    @Enumerated(EnumType.STRING)
+    @Column(name = "layout_variant")
+    private LayoutVariant layoutVariant;
+
     @Enumerated(EnumType.STRING)
     @Column(nullable = false)
     private OrderingMode orderingMode = OrderingMode.DISPLAY_ONLY;
@@ -131,6 +136,18 @@ public class BusinessWebsite extends BaseEntity {
 
     public void setTemplateType(TemplateType templateType) {
         this.templateType = templateType;
+    }
+
+    public LayoutVariant getLayoutVariant() {
+        return layoutVariant;
+    }
+
+    public void setLayoutVariant(LayoutVariant layoutVariant) {
+        this.layoutVariant = layoutVariant;
+    }
+
+    public LayoutVariant getEffectiveLayoutVariant() {
+        return layoutVariant != null ? layoutVariant : LayoutVariant.defaultFor(templateType);
     }
 
     public OrderingMode getOrderingMode() {

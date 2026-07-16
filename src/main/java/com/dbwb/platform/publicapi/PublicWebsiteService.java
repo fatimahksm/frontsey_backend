@@ -173,7 +173,7 @@ public class PublicWebsiteService {
 
         return new PublicWebsiteResponse(
                 website.getBusinessName(), website.getSlug(), website.getPageMode(), website.getTemplateType(),
-                website.getOrderingMode(), website.getPrimaryLanguage(), website.getCurrency(),
+                website.getEffectiveLayoutVariant(), website.getOrderingMode(), website.getPrimaryLanguage(), website.getCurrency(),
                 content, profile, hours, categories, areas, services, galleryUrls, seo);
     }
 }
