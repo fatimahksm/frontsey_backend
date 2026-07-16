@@ -1,5 +1,6 @@
 package com.dbwb.platform.publicapi.dto;
 
+import com.dbwb.platform.sections.entity.PageSectionType;
 import com.dbwb.platform.website.entity.LayoutVariant;
 import com.dbwb.platform.website.entity.OrderingMode;
 import com.dbwb.platform.website.entity.PageMode;
@@ -30,7 +31,9 @@ public record PublicWebsiteResponse(
         /** Populated only for TemplateType.PORTFOLIO sites; empty for MENU_ORDERING. */
         List<PublicService> services,
         List<String> galleryImageUrls,
-        PublicSeoMetadata seo
+        PublicSeoMetadata seo,
+        /** Owner-added extra sections (About/Testimonials/FAQ/Team), in display order. */
+        List<PublicPageSection> sections
 ) {
     public record PublicSeoMetadata(String metaTitle, String metaDescription, String ogImageUrl) {
     }
@@ -53,5 +56,9 @@ public record PublicWebsiteResponse(
     }
 
     public record PublicService(String id, String name, String description, BigDecimal price, String imageUrl) {
+    }
+
+    /** `data` is opaque JSON whose shape depends on `type` - parsed on the frontend. */
+    public record PublicPageSection(String id, PageSectionType type, String data) {
     }
 }

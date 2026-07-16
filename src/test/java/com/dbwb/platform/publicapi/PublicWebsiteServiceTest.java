@@ -11,6 +11,7 @@ import com.dbwb.platform.menu.repository.SizeVariantRepository;
 import com.dbwb.platform.portfolio.repository.ServiceItemRepository;
 import com.dbwb.platform.profile.repository.BusinessProfileRepository;
 import com.dbwb.platform.profile.repository.OpeningHoursRepository;
+import com.dbwb.platform.sections.repository.PageSectionRepository;
 import com.dbwb.platform.testsupport.TestEntities;
 import com.dbwb.platform.website.entity.BusinessWebsite;
 import com.dbwb.platform.website.entity.PageMode;
@@ -44,6 +45,7 @@ class PublicWebsiteServiceTest {
     @Mock private GalleryImageRepository galleryImageRepository;
     @Mock private SeoMetadataRepository seoMetadataRepository;
     @Mock private ServiceItemRepository serviceItemRepository;
+    @Mock private PageSectionRepository pageSectionRepository;
 
     private PublicWebsiteService service;
 
@@ -52,7 +54,8 @@ class PublicWebsiteServiceTest {
         service = new PublicWebsiteService(
                 websiteRepository, profileRepository, openingHoursRepository, categoryRepository, menuItemRepository,
                 sizeVariantRepository, addonGroupRepository, addonRepository, boxVariantRepository,
-                deliveryAreaRepository, galleryImageRepository, seoMetadataRepository, serviceItemRepository);
+                deliveryAreaRepository, galleryImageRepository, seoMetadataRepository, serviceItemRepository,
+                pageSectionRepository);
     }
 
     private BusinessWebsite websiteWith(String draftContent, String publishedContent) {

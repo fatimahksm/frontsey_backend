@@ -12,6 +12,7 @@ import com.dbwb.platform.menu.repository.MenuItemRepository;
 import com.dbwb.platform.menu.repository.SizeVariantRepository;
 import com.dbwb.platform.portfolio.repository.ServiceItemRepository;
 import com.dbwb.platform.profile.repository.BusinessProfileRepository;
+import com.dbwb.platform.sections.repository.PageSectionRepository;
 import com.dbwb.platform.profile.repository.OpeningHoursRepository;
 import com.dbwb.platform.publicapi.dto.PublicMenuItem;
 import com.dbwb.platform.publicapi.dto.PublicWebsiteResponse;
@@ -50,6 +51,7 @@ public class PublicWebsiteService {
     private final GalleryImageRepository galleryImageRepository;
     private final SeoMetadataRepository seoMetadataRepository;
     private final ServiceItemRepository serviceItemRepository;
+    private final PageSectionRepository pageSectionRepository;
 
     public PublicWebsiteService(
             BusinessWebsiteRepository websiteRepository,
@@ -64,7 +66,8 @@ public class PublicWebsiteService {
             DeliveryAreaRepository deliveryAreaRepository,
             GalleryImageRepository galleryImageRepository,
             SeoMetadataRepository seoMetadataRepository,
-            ServiceItemRepository serviceItemRepository) {
+            ServiceItemRepository serviceItemRepository,
+            PageSectionRepository pageSectionRepository) {
         this.websiteRepository = websiteRepository;
         this.profileRepository = profileRepository;
         this.openingHoursRepository = openingHoursRepository;
@@ -78,6 +81,7 @@ public class PublicWebsiteService {
         this.galleryImageRepository = galleryImageRepository;
         this.seoMetadataRepository = seoMetadataRepository;
         this.serviceItemRepository = serviceItemRepository;
+        this.pageSectionRepository = pageSectionRepository;
     }
 
     @Transactional(readOnly = true)
@@ -171,9 +175,14 @@ public class PublicWebsiteService {
                         s.getId().toString(), s.getName(), s.getDescription(), s.getPrice(), s.getImageUrl()))
                 .toList();
 
+        List<PublicWebsiteResponse.PublicPageSection> sections = pageSectionRepository
+                .findByWebsiteIdOrderBySortOrder(website.getId()).stream()
+                .map(s -> new PublicWebsiteResponse.PublicPageSection(s.getId().toString(), s.getType(), s.getData()))
+                .toList();
+
         return new PublicWebsiteResponse(
                 website.getBusinessName(), website.getSlug(), website.getPageMode(), website.getTemplateType(),
                 website.getEffectiveLayoutVariant(), website.getOrderingMode(), website.getPrimaryLanguage(), website.getCurrency(),
-                content, profile, hours, categories, areas, services, galleryUrls, seo);
+                content, profile, hours, categories, areas, services, galleryUrls, seo, sections);
     }
 }
