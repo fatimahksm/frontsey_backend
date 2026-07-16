@@ -11,10 +11,14 @@ public enum LayoutVariant {
     MENU_CLASSIC(TemplateType.MENU_ORDERING),
     /** Full-width cover hero, sticky category tabs, items as a card grid, cart as a slide-out drawer. */
     MENU_GRID(TemplateType.MENU_ORDERING),
+    /** Fine-dining style: display typography, single-column list with dotted price leaders, fixed bottom cart bar. */
+    MENU_ELEGANT(TemplateType.MENU_ORDERING),
     /** Full-bleed dark hero, centered content, services grid, work gallery. */
     PORTFOLIO_HERO(TemplateType.PORTFOLIO),
     /** Light editorial split-screen - fixed left profile panel, scrollable right content. */
-    PORTFOLIO_MINIMAL(TemplateType.PORTFOLIO);
+    PORTFOLIO_MINIMAL(TemplateType.PORTFOLIO),
+    /** Vibrant creative-agency style - bold typography, asymmetric accents, masonry work gallery as the centerpiece. */
+    PORTFOLIO_BOLD(TemplateType.PORTFOLIO);
 
     private final TemplateType templateType;
 
