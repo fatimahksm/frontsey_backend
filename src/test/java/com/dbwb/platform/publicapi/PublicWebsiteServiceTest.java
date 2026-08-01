@@ -13,6 +13,7 @@ import com.dbwb.platform.profile.repository.BusinessProfileRepository;
 import com.dbwb.platform.profile.repository.OpeningHoursRepository;
 import com.dbwb.platform.sections.repository.PageSectionRepository;
 import com.dbwb.platform.testsupport.TestEntities;
+import com.dbwb.platform.theme.ThemeConfigValidator;
 import com.dbwb.platform.website.entity.BusinessWebsite;
 import com.dbwb.platform.website.entity.PageMode;
 import com.dbwb.platform.website.entity.WebsiteStatus;
@@ -46,6 +47,7 @@ class PublicWebsiteServiceTest {
     @Mock private SeoMetadataRepository seoMetadataRepository;
     @Mock private ServiceItemRepository serviceItemRepository;
     @Mock private PageSectionRepository pageSectionRepository;
+    @Mock private ThemeConfigValidator themeConfigValidator;
 
     private PublicWebsiteService service;
 
@@ -55,7 +57,7 @@ class PublicWebsiteServiceTest {
                 websiteRepository, profileRepository, openingHoursRepository, categoryRepository, menuItemRepository,
                 sizeVariantRepository, addonGroupRepository, addonRepository, boxVariantRepository,
                 deliveryAreaRepository, galleryImageRepository, seoMetadataRepository, serviceItemRepository,
-                pageSectionRepository);
+                pageSectionRepository, themeConfigValidator);
     }
 
     private BusinessWebsite websiteWith(String draftContent, String publishedContent) {

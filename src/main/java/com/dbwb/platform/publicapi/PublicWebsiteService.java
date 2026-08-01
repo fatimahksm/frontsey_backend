@@ -16,6 +16,8 @@ import com.dbwb.platform.sections.repository.PageSectionRepository;
 import com.dbwb.platform.profile.repository.OpeningHoursRepository;
 import com.dbwb.platform.publicapi.dto.PublicMenuItem;
 import com.dbwb.platform.publicapi.dto.PublicWebsiteResponse;
+import com.dbwb.platform.theme.ThemeConfigValidator;
+import com.dbwb.platform.theme.dto.ThemeConfig;
 import com.dbwb.platform.website.entity.BusinessWebsite;
 import com.dbwb.platform.website.entity.WebsiteStatus;
 import com.dbwb.platform.website.repository.BusinessWebsiteRepository;
@@ -52,6 +54,7 @@ public class PublicWebsiteService {
     private final SeoMetadataRepository seoMetadataRepository;
     private final ServiceItemRepository serviceItemRepository;
     private final PageSectionRepository pageSectionRepository;
+    private final ThemeConfigValidator themeConfigValidator;
 
     public PublicWebsiteService(
             BusinessWebsiteRepository websiteRepository,
@@ -67,7 +70,8 @@ public class PublicWebsiteService {
             GalleryImageRepository galleryImageRepository,
             SeoMetadataRepository seoMetadataRepository,
             ServiceItemRepository serviceItemRepository,
-            PageSectionRepository pageSectionRepository) {
+            PageSectionRepository pageSectionRepository,
+            ThemeConfigValidator themeConfigValidator) {
         this.websiteRepository = websiteRepository;
         this.profileRepository = profileRepository;
         this.openingHoursRepository = openingHoursRepository;
@@ -82,6 +86,7 @@ public class PublicWebsiteService {
         this.seoMetadataRepository = seoMetadataRepository;
         this.serviceItemRepository = serviceItemRepository;
         this.pageSectionRepository = pageSectionRepository;
+        this.themeConfigValidator = themeConfigValidator;
     }
 
     @Transactional(readOnly = true)
@@ -180,9 +185,15 @@ public class PublicWebsiteService {
                 .map(s -> new PublicWebsiteResponse.PublicPageSection(s.getId().toString(), s.getType(), s.getData()))
                 .toList();
 
+        // Phase 3: every website has an *effective* theme, whether it picked a preset or is building from
+        // scratch - re-validated defensively here since the column is still free-text TEXT at the DB level.
+        ThemeConfig theme = website.getTheme() != null
+                ? themeConfigValidator.parseOrDefault(website.getTheme().getThemeConfig())
+                : ThemeConfig.defaults();
+
         return new PublicWebsiteResponse(
                 website.getBusinessName(), website.getSlug(), website.getPageMode(), website.getTemplateType(),
                 website.getEffectiveLayoutVariant(), website.getOrderingMode(), website.getPrimaryLanguage(), website.getCurrency(),
-                content, profile, hours, categories, areas, services, galleryUrls, seo, sections);
+                content, profile, hours, categories, areas, services, galleryUrls, seo, sections, theme);
     }
 }

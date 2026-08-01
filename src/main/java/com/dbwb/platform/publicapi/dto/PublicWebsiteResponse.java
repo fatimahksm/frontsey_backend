@@ -1,6 +1,7 @@
 package com.dbwb.platform.publicapi.dto;
 
 import com.dbwb.platform.sections.entity.PageSectionType;
+import com.dbwb.platform.theme.dto.ThemeConfig;
 import com.dbwb.platform.website.entity.LayoutVariant;
 import com.dbwb.platform.website.entity.OrderingMode;
 import com.dbwb.platform.website.entity.PageMode;
@@ -33,7 +34,14 @@ public record PublicWebsiteResponse(
         List<String> galleryImageUrls,
         PublicSeoMetadata seo,
         /** Owner-added extra sections (About/Testimonials/FAQ/Team), in display order. */
-        List<PublicPageSection> sections
+        List<PublicPageSection> sections,
+        /**
+         * Phase 3: the website's effective design system - its selected Theme's
+         * validated config, or {@link ThemeConfig#defaults()} when building from
+         * scratch. Single source of truth shared by the public site, the owner's
+         * draft preview, and (in future) the published snapshot.
+         */
+        ThemeConfig theme
 ) {
     public record PublicSeoMetadata(String metaTitle, String metaDescription, String ogImageUrl) {
     }

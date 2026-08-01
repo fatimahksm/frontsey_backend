@@ -18,6 +18,7 @@ import com.dbwb.platform.subscription.repository.MockPaymentRepository;
 import com.dbwb.platform.subscription.repository.SubscriptionRepository;
 import com.dbwb.platform.support.SupportService;
 import com.dbwb.platform.testsupport.TestEntities;
+import com.dbwb.platform.theme.ThemeConfigValidator;
 import com.dbwb.platform.theme.repository.ThemeRepository;
 import com.dbwb.platform.website.entity.BusinessWebsite;
 import com.dbwb.platform.website.entity.WebsiteStatus;
@@ -44,6 +45,7 @@ class AdminServiceTest {
     @Mock private AccountRepository accountRepository;
     @Mock private BusinessWebsiteRepository websiteRepository;
     @Mock private ThemeRepository themeRepository;
+    @Mock private ThemeConfigValidator themeConfigValidator;
     @Mock private PlanRepository planRepository;
     @Mock private SubscriptionRepository subscriptionRepository;
     @Mock private MockPaymentRepository mockPaymentRepository;
@@ -62,7 +64,7 @@ class AdminServiceTest {
     @BeforeEach
     void setUp() {
         adminService = new AdminService(
-                accountRepository, websiteRepository, themeRepository, planRepository, subscriptionRepository,
+                accountRepository, websiteRepository, themeRepository, themeConfigValidator, planRepository, subscriptionRepository,
                 mockPaymentRepository, supportService, emailService, auditService, auditLogRepository);
     }
 

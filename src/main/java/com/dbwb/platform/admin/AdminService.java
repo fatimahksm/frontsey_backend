@@ -27,6 +27,7 @@ import com.dbwb.platform.subscription.entity.MockPaymentStatus;
 import com.dbwb.platform.support.SupportService;
 import com.dbwb.platform.support.entity.SupportTicket;
 import com.dbwb.platform.support.entity.SupportTicketStatus;
+import com.dbwb.platform.theme.ThemeConfigValidator;
 import com.dbwb.platform.theme.entity.Theme;
 import com.dbwb.platform.theme.repository.ThemeRepository;
 import com.dbwb.platform.account.entity.Account;
@@ -55,6 +56,7 @@ public class AdminService {
     private final AccountRepository accountRepository;
     private final BusinessWebsiteRepository websiteRepository;
     private final ThemeRepository themeRepository;
+    private final ThemeConfigValidator themeConfigValidator;
     private final PlanRepository planRepository;
     private final SubscriptionRepository subscriptionRepository;
     private final MockPaymentRepository mockPaymentRepository;
@@ -67,6 +69,7 @@ public class AdminService {
             AccountRepository accountRepository,
             BusinessWebsiteRepository websiteRepository,
             ThemeRepository themeRepository,
+            ThemeConfigValidator themeConfigValidator,
             PlanRepository planRepository,
             SubscriptionRepository subscriptionRepository,
             MockPaymentRepository mockPaymentRepository,
@@ -77,6 +80,7 @@ public class AdminService {
         this.accountRepository = accountRepository;
         this.websiteRepository = websiteRepository;
         this.themeRepository = themeRepository;
+        this.themeConfigValidator = themeConfigValidator;
         this.planRepository = planRepository;
         this.subscriptionRepository = subscriptionRepository;
         this.mockPaymentRepository = mockPaymentRepository;
@@ -318,6 +322,9 @@ public class AdminService {
     }
 
     private void applyThemeRequest(Theme theme, ThemeRequest request) {
+        // Reject invalid/arbitrary theme JSON up front (Phase 3) - the public renderer relies on themeConfig
+        // always parsing into the strongly-typed ThemeConfig schema, so no invalid config should ever be stored.
+        themeConfigValidator.parseAndValidate(request.themeConfig());
         theme.setName(request.name());
         theme.setDescription(request.description());
         theme.setThemeConfig(request.themeConfig());
