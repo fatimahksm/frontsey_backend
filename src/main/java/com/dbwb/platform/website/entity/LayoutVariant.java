@@ -13,6 +13,8 @@ public enum LayoutVariant {
     MENU_GRID(TemplateType.MENU_ORDERING),
     /** Fine-dining style: display typography, single-column list with dotted price leaders, fixed bottom cart bar. */
     MENU_ELEGANT(TemplateType.MENU_ORDERING),
+    /** Warm, photography-led cafe/bistro style: bold headline hero, real combo-box deals, card-grid menu with sticky category filters. */
+    MENU_BISTRO(TemplateType.MENU_ORDERING),
     /** Full-bleed dark hero, centered content, services grid, work gallery. */
     PORTFOLIO_HERO(TemplateType.PORTFOLIO),
     /** Light editorial split-screen - fixed left profile panel, scrollable right content. */
