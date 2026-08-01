@@ -18,7 +18,9 @@ public enum LayoutVariant {
     /** Light editorial split-screen - fixed left profile panel, scrollable right content. */
     PORTFOLIO_MINIMAL(TemplateType.PORTFOLIO),
     /** Vibrant creative-agency style - bold typography, asymmetric accents, masonry work gallery as the centerpiece. */
-    PORTFOLIO_BOLD(TemplateType.PORTFOLIO);
+    PORTFOLIO_BOLD(TemplateType.PORTFOLIO),
+    /** Personal, photo-led homepage - real profile photo hero with a floating highlight badge, a featured-projects grid. */
+    PORTFOLIO_PROFILE(TemplateType.PORTFOLIO);
 
     private final TemplateType templateType;
 
