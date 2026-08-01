@@ -1,8 +1,13 @@
 package com.dbwb.platform.website;
 
+import com.dbwb.platform.account.entity.Account;
 import com.dbwb.platform.account.entity.Role;
 import com.dbwb.platform.account.repository.AccountRepository;
 import com.dbwb.platform.common.exception.BusinessRuleViolationException;
+import com.dbwb.platform.manager.entity.InvitationStatus;
+import com.dbwb.platform.manager.entity.ManagerAccess;
+import com.dbwb.platform.manager.entity.Permission;
+import com.dbwb.platform.manager.repository.ManagerAccessRepository;
 import com.dbwb.platform.menu.repository.CategoryRepository;
 import com.dbwb.platform.portfolio.repository.ServiceItemRepository;
 import com.dbwb.platform.profile.entity.BusinessProfile;
@@ -24,7 +29,9 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
+import java.util.List;
 import java.util.Optional;
+import java.util.Set;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -51,6 +58,7 @@ class WebsiteServiceTest {
     @Mock private SubscriptionQueryService subscriptionQueryService;
     @Mock private com.dbwb.platform.audit.AuditService auditService;
     @Mock private PublicWebsiteService publicWebsiteService;
+    @Mock private ManagerAccessRepository managerAccessRepository;
 
     private WebsiteService websiteService;
 
@@ -63,7 +71,7 @@ class WebsiteServiceTest {
         websiteService = new WebsiteService(
                 websiteRepository, themeRepository, accountRepository, profileRepository, categoryRepository,
                 serviceItemRepository, slugGenerator, accessGuard, subscriptionQueryService, auditService,
-                publicWebsiteService);
+                publicWebsiteService, managerAccessRepository);
 
         website = TestEntities.withId(new BusinessWebsite(), websiteId);
         website.setBusinessName("Test Business");
@@ -164,5 +172,64 @@ class WebsiteServiceTest {
         assertThatThrownBy(() -> websiteService.updateLayoutVariant(websiteId, owner, LayoutVariant.PORTFOLIO_HERO))
                 .isInstanceOf(BusinessRuleViolationException.class)
                 .hasMessageContaining("not a valid layout");
+    }
+
+    // --- Phase 4: accessible-websites / caller role+permissions ---
+
+    @Test
+    void getWithAccessReturnsOwnerRoleForTheWebsiteOwner() {
+        Account ownerAccount = TestEntities.withId(new Account(), owner.accountId());
+        website.setOwner(ownerAccount);
+        when(accessGuard.requireReadAccess(websiteId, owner)).thenReturn(website);
+
+        var access = websiteService.getWithAccess(websiteId, owner);
+
+        assertThat(access.role()).isEqualTo(com.dbwb.platform.website.dto.AccessRole.OWNER);
+        assertThat(access.permissions()).isEmpty();
+    }
+
+    @Test
+    void getWithAccessReturnsManagerRoleAndGrantedPermissions() {
+        Account ownerAccount = TestEntities.withId(new Account(), UUID.randomUUID());
+        website.setOwner(ownerAccount);
+        AuthenticatedAccount manager = new AuthenticatedAccount(UUID.randomUUID(), "manager@example.com", Role.MANAGER);
+        when(accessGuard.requireReadAccess(websiteId, manager)).thenReturn(website);
+
+        ManagerAccess managerAccess = TestEntities.withId(new ManagerAccess(), UUID.randomUUID());
+        managerAccess.setPermissions(Set.of(Permission.MANAGE_MENU));
+        when(managerAccessRepository.findByWebsiteIdAndManagerAccountId(websiteId, manager.accountId()))
+                .thenReturn(Optional.of(managerAccess));
+
+        var access = websiteService.getWithAccess(websiteId, manager);
+
+        assertThat(access.role()).isEqualTo(com.dbwb.platform.website.dto.AccessRole.MANAGER);
+        assertThat(access.permissions()).containsExactly(Permission.MANAGE_MENU);
+    }
+
+    @Test
+    void listAccessibleCombinesOwnedAndAcceptedManagedWebsites() {
+        BusinessWebsite owned = TestEntities.withId(new BusinessWebsite(), UUID.randomUUID());
+        BusinessWebsite managed = TestEntities.withId(new BusinessWebsite(), UUID.randomUUID());
+        when(websiteRepository.findByOwnerId(owner.accountId())).thenReturn(List.of(owned));
+
+        ManagerAccess managerAccess = TestEntities.withId(new ManagerAccess(), UUID.randomUUID());
+        managerAccess.setWebsite(managed);
+        managerAccess.setStatus(InvitationStatus.ACCEPTED);
+        managerAccess.setPermissions(Set.of(Permission.VIEW_ANALYTICS));
+        when(managerAccessRepository.findByManagerAccountIdAndStatus(owner.accountId(), InvitationStatus.ACCEPTED))
+                .thenReturn(List.of(managerAccess));
+
+        var result = websiteService.listAccessible(owner);
+
+        assertThat(result).hasSize(2);
+        assertThat(result).anySatisfy(a -> {
+            assertThat(a.website()).isEqualTo(owned);
+            assertThat(a.role()).isEqualTo(com.dbwb.platform.website.dto.AccessRole.OWNER);
+        });
+        assertThat(result).anySatisfy(a -> {
+            assertThat(a.website()).isEqualTo(managed);
+            assertThat(a.role()).isEqualTo(com.dbwb.platform.website.dto.AccessRole.MANAGER);
+            assertThat(a.permissions()).containsExactly(Permission.VIEW_ANALYTICS);
+        });
     }
 }

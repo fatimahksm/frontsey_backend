@@ -45,9 +45,19 @@ public class WebsiteController {
         return ApiResponse.ok(websites.stream().map(WebsiteResponse::from).toList());
     }
 
+    /** Phase 4 (BR-MGR): every website the caller owns or has ACCEPTED manager access to, with their role/permissions on each. */
+    @GetMapping("/accessible")
+    public ApiResponse<List<WebsiteResponse>> listAccessible() {
+        var accessible = websiteService.listAccessible(currentAccount.get());
+        return ApiResponse.ok(accessible.stream()
+                .map(a -> WebsiteResponse.from(a.website(), a.role(), a.permissions()))
+                .toList());
+    }
+
     @GetMapping("/{id}")
     public ApiResponse<WebsiteResponse> get(@PathVariable UUID id) {
-        return ApiResponse.ok(WebsiteResponse.from(websiteService.get(id, currentAccount.get())));
+        var access = websiteService.getWithAccess(id, currentAccount.get());
+        return ApiResponse.ok(WebsiteResponse.from(access.website(), access.role(), access.permissions()));
     }
 
     @GetMapping("/{id}/preview")

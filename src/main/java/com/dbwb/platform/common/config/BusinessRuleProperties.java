@@ -37,6 +37,9 @@ public class BusinessRuleProperties {
     /** How often the subscription-lifecycle and suspension-reactivation background jobs run. */
     private long maintenanceJobIntervalMs;
 
+    /** BR-MGR-007: days a manager invitation stays PENDING before it auto-expires. */
+    private int managerInvitationExpiryDays;
+
     public int getSubscriptionGracePeriodDays() {
         return subscriptionGracePeriodDays;
     }
@@ -99,5 +102,13 @@ public class BusinessRuleProperties {
 
     public void setMaintenanceJobIntervalMs(long maintenanceJobIntervalMs) {
         this.maintenanceJobIntervalMs = maintenanceJobIntervalMs;
+    }
+
+    public int getManagerInvitationExpiryDays() {
+        return managerInvitationExpiryDays;
+    }
+
+    public void setManagerInvitationExpiryDays(int managerInvitationExpiryDays) {
+        this.managerInvitationExpiryDays = managerInvitationExpiryDays;
     }
 }

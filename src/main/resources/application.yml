@@ -62,6 +62,7 @@ dbwb:
     email-verification-token-ttl-hours: 24    # BR-AUTH-002
     password-reset-token-ttl-minutes: 30      # BR-AUTH-004
     maintenance-job-interval-ms: 3600000      # 1 hour - BR-SUB-006/BR-ADM-004 background jobs
+    manager-invitation-expiry-days: 14        # BR-MGR-007
 
   frontend:
     public-site-base-url: ${PUBLIC_SITE_BASE_URL:http://localhost:3000}

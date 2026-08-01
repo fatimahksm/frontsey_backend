@@ -1,8 +1,13 @@
 package com.dbwb.platform.website;
 
+import com.dbwb.platform.account.entity.Role;
 import com.dbwb.platform.audit.AuditService;
 import com.dbwb.platform.common.exception.BusinessRuleViolationException;
 import com.dbwb.platform.common.exception.ResourceNotFoundException;
+import com.dbwb.platform.manager.entity.InvitationStatus;
+import com.dbwb.platform.manager.entity.ManagerAccess;
+import com.dbwb.platform.manager.entity.Permission;
+import com.dbwb.platform.manager.repository.ManagerAccessRepository;
 import com.dbwb.platform.portfolio.repository.ServiceItemRepository;
 import com.dbwb.platform.profile.repository.BusinessProfileRepository;
 import com.dbwb.platform.publicapi.PublicWebsiteService;
@@ -11,6 +16,7 @@ import com.dbwb.platform.security.AuthenticatedAccount;
 import com.dbwb.platform.subscription.SubscriptionQueryService;
 import com.dbwb.platform.theme.entity.Theme;
 import com.dbwb.platform.theme.repository.ThemeRepository;
+import com.dbwb.platform.website.dto.AccessRole;
 import com.dbwb.platform.website.dto.CreateWebsiteRequest;
 import com.dbwb.platform.website.dto.UpdateDraftContentRequest;
 import com.dbwb.platform.website.entity.BusinessWebsite;
@@ -23,7 +29,9 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Instant;
+import java.util.ArrayList;
 import java.util.List;
+import java.util.Set;
 import java.util.UUID;
 
 /**
@@ -44,6 +52,7 @@ public class WebsiteService {
     private final SubscriptionQueryService subscriptionQueryService;
     private final AuditService auditService;
     private final PublicWebsiteService publicWebsiteService;
+    private final ManagerAccessRepository managerAccessRepository;
 
     public WebsiteService(
             BusinessWebsiteRepository websiteRepository,
@@ -56,7 +65,8 @@ public class WebsiteService {
             WebsiteAccessGuard accessGuard,
             SubscriptionQueryService subscriptionQueryService,
             AuditService auditService,
-            PublicWebsiteService publicWebsiteService) {
+            PublicWebsiteService publicWebsiteService,
+            ManagerAccessRepository managerAccessRepository) {
         this.websiteRepository = websiteRepository;
         this.themeRepository = themeRepository;
         this.accountRepository = accountRepository;
@@ -68,6 +78,11 @@ public class WebsiteService {
         this.subscriptionQueryService = subscriptionQueryService;
         this.auditService = auditService;
         this.publicWebsiteService = publicWebsiteService;
+        this.managerAccessRepository = managerAccessRepository;
+    }
+
+    /** Phase 4: a website plus the caller's role/permissions on it, so the frontend can gate UI without re-deriving access logic. */
+    public record WebsiteAccessInfo(BusinessWebsite website, AccessRole role, Set<Permission> permissions) {
     }
 
     @Transactional
@@ -105,6 +120,35 @@ public class WebsiteService {
     @Transactional(readOnly = true)
     public BusinessWebsite get(UUID websiteId, AuthenticatedAccount caller) {
         return accessGuard.requireReadAccess(websiteId, caller);
+    }
+
+    /** Same access check as get(), but also resolves the caller's role/permissions for this one website. */
+    @Transactional(readOnly = true)
+    public WebsiteAccessInfo getWithAccess(UUID websiteId, AuthenticatedAccount caller) {
+        BusinessWebsite website = accessGuard.requireReadAccess(websiteId, caller);
+        return accessInfoFor(website, caller);
+    }
+
+    /** Phase 4 (BR-MGR): every website the caller owns, plus every website they have ACCEPTED manager access to. */
+    @Transactional(readOnly = true)
+    public List<WebsiteAccessInfo> listAccessible(AuthenticatedAccount caller) {
+        List<WebsiteAccessInfo> result = new ArrayList<>();
+        websiteRepository.findByOwnerId(caller.accountId())
+                .forEach(website -> result.add(new WebsiteAccessInfo(website, AccessRole.OWNER, Set.of())));
+        managerAccessRepository.findByManagerAccountIdAndStatus(caller.accountId(), InvitationStatus.ACCEPTED)
+                .forEach(access -> result.add(new WebsiteAccessInfo(access.getWebsite(), AccessRole.MANAGER, access.getPermissions())));
+        return result;
+    }
+
+    private WebsiteAccessInfo accessInfoFor(BusinessWebsite website, AuthenticatedAccount caller) {
+        if (caller.role() == Role.SUPER_ADMIN || website.getOwner().getId().equals(caller.accountId())) {
+            return new WebsiteAccessInfo(website, AccessRole.OWNER, Set.of());
+        }
+        Set<Permission> permissions = managerAccessRepository
+                .findByWebsiteIdAndManagerAccountId(website.getId(), caller.accountId())
+                .map(ManagerAccess::getPermissions)
+                .orElse(Set.of());
+        return new WebsiteAccessInfo(website, AccessRole.MANAGER, permissions);
     }
 
     /** Lets the owner/a manager see the current draft rendered exactly as customers would see it, before publishing. */
