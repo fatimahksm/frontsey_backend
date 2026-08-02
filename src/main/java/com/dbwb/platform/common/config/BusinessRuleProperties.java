@@ -34,6 +34,9 @@ public class BusinessRuleProperties {
     /** BR-AUTH-004: minutes a password-reset link stays valid before it must be re-requested. */
     private int passwordResetTokenTtlMinutes;
 
+    /** BR-AUTH-007: days a refresh token stays valid (and keeps extending on use) before its holder must log in again. */
+    private int refreshTokenTtlDays;
+
     /** How often the subscription-lifecycle and suspension-reactivation background jobs run. */
     private long maintenanceJobIntervalMs;
 
@@ -110,5 +113,13 @@ public class BusinessRuleProperties {
 
     public void setManagerInvitationExpiryDays(int managerInvitationExpiryDays) {
         this.managerInvitationExpiryDays = managerInvitationExpiryDays;
+    }
+
+    public int getRefreshTokenTtlDays() {
+        return refreshTokenTtlDays;
+    }
+
+    public void setRefreshTokenTtlDays(int refreshTokenTtlDays) {
+        this.refreshTokenTtlDays = refreshTokenTtlDays;
     }
 }

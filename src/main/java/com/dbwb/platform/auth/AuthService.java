@@ -40,6 +40,7 @@ public class AuthService {
     private final EmailService emailService;
     private final BusinessRuleProperties businessRules;
     private final ManagerService managerService;
+    private final RefreshTokenRevoker refreshTokenRevoker;
     private final String publicSiteBaseUrl;
 
     public AuthService(
@@ -50,6 +51,7 @@ public class AuthService {
             EmailService emailService,
             BusinessRuleProperties businessRules,
             ManagerService managerService,
+            RefreshTokenRevoker refreshTokenRevoker,
             FrontendProperties frontendProperties) {
         this.accountRepository = accountRepository;
         this.tokenRepository = tokenRepository;
@@ -58,6 +60,7 @@ public class AuthService {
         this.emailService = emailService;
         this.businessRules = businessRules;
         this.managerService = managerService;
+        this.refreshTokenRevoker = refreshTokenRevoker;
         this.publicSiteBaseUrl = frontendProperties.getPublicSiteBaseUrl();
     }
 
@@ -110,8 +113,8 @@ public class AuthService {
         token.setUsedAt(Instant.now());
     }
 
-    @Transactional(readOnly = true)
-    public AuthResponse login(LoginRequest request) {
+    @Transactional
+    public AuthResult login(LoginRequest request) {
         Account account = accountRepository.findByEmailIgnoreCase(request.email())
                 .orElseThrow(() -> new BusinessRuleViolationException("Invalid email or password."));
 
@@ -131,7 +134,64 @@ public class AuthService {
         }
 
         String accessToken = jwtService.generateAccessToken(account);
-        return new AuthResponse(accessToken, account.getId(), account.getEmail(), account.getRole());
+        AccountToken refreshToken = issueRefreshToken(account);
+        return new AuthResult(
+                new AuthResponse(accessToken, account.getId(), account.getEmail(), account.getRole()),
+                refreshToken.getToken(),
+                refreshToken.getExpiresAt());
+    }
+
+    /** BR-AUTH-007: rotates a refresh token - the presented one is consumed and a new access + refresh token pair is issued. Rejects (and revokes every other outstanding refresh token for the account) if the presented token was already used, since that indicates it was stolen and replayed. */
+    @Transactional
+    public AuthResult refresh(String rawRefreshToken) {
+        AccountToken token = tokenRepository.findByToken(rawRefreshToken)
+                .filter(t -> t.getType() == TokenType.REFRESH)
+                .orElseThrow(() -> new BusinessRuleViolationException("Invalid session. Please log in again."));
+
+        Account account = token.getAccount();
+
+        if (token.getUsedAt() != null) {
+            // Runs in its own committed transaction - see RefreshTokenRevoker's javadoc for why
+            // this can't just be a repository loop here (this method's own rollback would undo it).
+            refreshTokenRevoker.revokeAllActive(account.getId(), TokenType.REFRESH);
+            throw new BusinessRuleViolationException("Invalid session. Please log in again.");
+        }
+        if (token.getExpiresAt().isBefore(Instant.now())) {
+            throw new BusinessRuleViolationException("Your session has expired. Please log in again.");
+        }
+        if (account.getStatus() != AccountStatus.ACTIVE && account.getStatus() != AccountStatus.DISABLED_PENDING_DELETION) {
+            throw new BusinessRuleViolationException("This account is not active.");
+        }
+
+        token.setUsedAt(Instant.now());
+
+        String accessToken = jwtService.generateAccessToken(account);
+        AccountToken newRefreshToken = issueRefreshToken(account);
+        return new AuthResult(
+                new AuthResponse(accessToken, account.getId(), account.getEmail(), account.getRole()),
+                newRefreshToken.getToken(),
+                newRefreshToken.getExpiresAt());
+    }
+
+    @Transactional
+    public void logout(String rawRefreshToken) {
+        tokenRepository.findByToken(rawRefreshToken)
+                .filter(t -> t.getType() == TokenType.REFRESH)
+                .filter(t -> t.getUsedAt() == null)
+                .ifPresent(t -> t.setUsedAt(Instant.now()));
+    }
+
+    private AccountToken issueRefreshToken(Account account) {
+        AccountToken token = new AccountToken();
+        token.setAccount(account);
+        token.setType(TokenType.REFRESH);
+        token.setToken(UUID.randomUUID().toString());
+        token.setExpiresAt(Instant.now().plus(businessRules.getRefreshTokenTtlDays(), ChronoUnit.DAYS));
+        return tokenRepository.save(token);
+    }
+
+    /** Bundles the JSON-safe AuthResponse with the raw refresh token/expiry so the controller can set it as an httpOnly cookie - the refresh token itself never appears in a JSON response body. */
+    public record AuthResult(AuthResponse response, String refreshToken, Instant refreshTokenExpiresAt) {
     }
 
     @Transactional

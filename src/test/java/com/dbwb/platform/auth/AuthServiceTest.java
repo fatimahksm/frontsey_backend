@@ -2,7 +2,9 @@ package com.dbwb.platform.auth;
 
 import com.dbwb.platform.account.entity.Account;
 import com.dbwb.platform.account.entity.AccountStatus;
+import com.dbwb.platform.account.entity.AccountToken;
 import com.dbwb.platform.account.entity.Role;
+import com.dbwb.platform.account.entity.TokenType;
 import com.dbwb.platform.account.repository.AccountRepository;
 import com.dbwb.platform.account.repository.AccountTokenRepository;
 import com.dbwb.platform.auth.dto.AuthResponse;
@@ -22,6 +24,8 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.security.crypto.password.PasswordEncoder;
 
+import java.time.Instant;
+import java.time.temporal.ChronoUnit;
 import java.util.Optional;
 import java.util.UUID;
 
@@ -50,6 +54,8 @@ class AuthServiceTest {
     @Mock
     private ManagerService managerService;
     @Mock
+    private RefreshTokenRevoker refreshTokenRevoker;
+    @Mock
     private FrontendProperties frontendProperties;
 
     private AuthService authService;
@@ -58,8 +64,12 @@ class AuthServiceTest {
     void setUp() {
         lenient().when(frontendProperties.getPublicSiteBaseUrl()).thenReturn("http://localhost:3000");
         lenient().when(businessRules.getEmailVerificationTokenTtlHours()).thenReturn(24);
+        lenient().when(businessRules.getRefreshTokenTtlDays()).thenReturn(30);
+        lenient().when(tokenRepository.save(any(AccountToken.class)))
+                .thenAnswer(invocation -> TestEntities.withId(invocation.getArgument(0), UUID.randomUUID()));
         authService = new AuthService(
-                accountRepository, tokenRepository, passwordEncoder, jwtService, emailService, businessRules, managerService, frontendProperties);
+                accountRepository, tokenRepository, passwordEncoder, jwtService, emailService, businessRules,
+                managerService, refreshTokenRevoker, frontendProperties);
     }
 
     @Test
@@ -128,23 +138,87 @@ class AuthServiceTest {
         when(passwordEncoder.matches("password123", account.getPasswordHash())).thenReturn(true);
         when(jwtService.generateAccessToken(account)).thenReturn("a-jwt-token");
 
-        AuthResponse response = authService.login(new LoginRequest(account.getEmail(), "password123"));
+        AuthResponse response = authService.login(new LoginRequest(account.getEmail(), "password123")).response();
 
         assertThat(response.accessToken()).isEqualTo("a-jwt-token");
     }
 
     @Test
-    void loginSucceedsForAnActiveVerifiedAccountWithTheRightPassword() {
+    void loginSucceedsForAnActiveVerifiedAccountWithTheRightPasswordAndIssuesARefreshToken() {
         Account account = activeAccount();
         when(accountRepository.findByEmailIgnoreCase(account.getEmail())).thenReturn(Optional.of(account));
         when(passwordEncoder.matches("password123", account.getPasswordHash())).thenReturn(true);
         when(jwtService.generateAccessToken(account)).thenReturn("a-jwt-token");
 
-        AuthResponse response = authService.login(new LoginRequest(account.getEmail(), "password123"));
+        AuthService.AuthResult result = authService.login(new LoginRequest(account.getEmail(), "password123"));
 
-        assertThat(response.accessToken()).isEqualTo("a-jwt-token");
-        assertThat(response.email()).isEqualTo(account.getEmail());
-        assertThat(response.role()).isEqualTo(Role.BUSINESS_OWNER);
+        assertThat(result.response().accessToken()).isEqualTo("a-jwt-token");
+        assertThat(result.response().email()).isEqualTo(account.getEmail());
+        assertThat(result.response().role()).isEqualTo(Role.BUSINESS_OWNER);
+        assertThat(result.refreshToken()).isNotBlank();
+        assertThat(result.refreshTokenExpiresAt()).isAfter(Instant.now());
+    }
+
+    @Test
+    void refreshRotatesAValidTokenAndConsumesIt() {
+        Account account = activeAccount();
+        AccountToken existing = refreshTokenFor(account, false, Instant.now().plus(1, ChronoUnit.DAYS));
+        when(tokenRepository.findByToken("raw-refresh")).thenReturn(Optional.of(existing));
+        when(jwtService.generateAccessToken(account)).thenReturn("new-access-token");
+
+        AuthService.AuthResult result = authService.refresh("raw-refresh");
+
+        assertThat(result.response().accessToken()).isEqualTo("new-access-token");
+        assertThat(existing.getUsedAt()).isNotNull();
+    }
+
+    @Test
+    void refreshRejectsAnExpiredToken() {
+        Account account = activeAccount();
+        AccountToken expired = refreshTokenFor(account, false, Instant.now().minus(1, ChronoUnit.DAYS));
+        when(tokenRepository.findByToken("raw-refresh")).thenReturn(Optional.of(expired));
+
+        assertThatThrownBy(() -> authService.refresh("raw-refresh"))
+                .isInstanceOf(BusinessRuleViolationException.class)
+                .hasMessageContaining("expired");
+    }
+
+    @Test
+    void refreshOfAnAlreadyUsedTokenRevokesEveryOtherOutstandingRefreshTokenForTheAccount() {
+        // BR-AUTH-007: a used-again refresh token means it was stolen and replayed - revoke the
+        // whole session family (via RefreshTokenRevoker's own committed transaction - see its
+        // javadoc for why that can't just be inline here) rather than just rejecting this request.
+        Account account = activeAccount();
+        AccountToken reused = refreshTokenFor(account, true, Instant.now().plus(1, ChronoUnit.DAYS));
+        when(tokenRepository.findByToken("stolen-token")).thenReturn(Optional.of(reused));
+
+        assertThatThrownBy(() -> authService.refresh("stolen-token"))
+                .isInstanceOf(BusinessRuleViolationException.class);
+
+        verify(refreshTokenRevoker).revokeAllActive(account.getId(), TokenType.REFRESH);
+    }
+
+    @Test
+    void logoutMarksTheRefreshTokenUsed() {
+        Account account = activeAccount();
+        AccountToken token = refreshTokenFor(account, false, Instant.now().plus(1, ChronoUnit.DAYS));
+        when(tokenRepository.findByToken("raw-refresh")).thenReturn(Optional.of(token));
+
+        authService.logout("raw-refresh");
+
+        assertThat(token.getUsedAt()).isNotNull();
+    }
+
+    private AccountToken refreshTokenFor(Account account, boolean alreadyUsed, Instant expiresAt) {
+        AccountToken token = new AccountToken();
+        token.setAccount(account);
+        token.setType(TokenType.REFRESH);
+        token.setToken(UUID.randomUUID().toString());
+        token.setExpiresAt(expiresAt);
+        if (alreadyUsed) {
+            token.setUsedAt(Instant.now().minus(1, ChronoUnit.HOURS));
+        }
+        return TestEntities.withId(token, UUID.randomUUID());
     }
 
     private Account activeAccount() {
