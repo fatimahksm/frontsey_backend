@@ -28,6 +28,21 @@ public class BusinessRuleProperties {
     /** BR-NFR-001: target public page load time, used only for monitoring/alerting thresholds. */
     private int websitePublicLoadTargetSeconds;
 
+    /** BR-AUTH-002: hours an email-verification link stays valid before it must be re-requested. */
+    private int emailVerificationTokenTtlHours;
+
+    /** BR-AUTH-004: minutes a password-reset link stays valid before it must be re-requested. */
+    private int passwordResetTokenTtlMinutes;
+
+    /** BR-AUTH-007: days a refresh token stays valid (and keeps extending on use) before its holder must log in again. */
+    private int refreshTokenTtlDays;
+
+    /** How often the subscription-lifecycle and suspension-reactivation background jobs run. */
+    private long maintenanceJobIntervalMs;
+
+    /** BR-MGR-007: days a manager invitation stays PENDING before it auto-expires. */
+    private int managerInvitationExpiryDays;
+
     public int getSubscriptionGracePeriodDays() {
         return subscriptionGracePeriodDays;
     }
@@ -66,5 +81,45 @@ public class BusinessRuleProperties {
 
     public void setWebsitePublicLoadTargetSeconds(int websitePublicLoadTargetSeconds) {
         this.websitePublicLoadTargetSeconds = websitePublicLoadTargetSeconds;
+    }
+
+    public int getEmailVerificationTokenTtlHours() {
+        return emailVerificationTokenTtlHours;
+    }
+
+    public void setEmailVerificationTokenTtlHours(int emailVerificationTokenTtlHours) {
+        this.emailVerificationTokenTtlHours = emailVerificationTokenTtlHours;
+    }
+
+    public int getPasswordResetTokenTtlMinutes() {
+        return passwordResetTokenTtlMinutes;
+    }
+
+    public void setPasswordResetTokenTtlMinutes(int passwordResetTokenTtlMinutes) {
+        this.passwordResetTokenTtlMinutes = passwordResetTokenTtlMinutes;
+    }
+
+    public long getMaintenanceJobIntervalMs() {
+        return maintenanceJobIntervalMs;
+    }
+
+    public void setMaintenanceJobIntervalMs(long maintenanceJobIntervalMs) {
+        this.maintenanceJobIntervalMs = maintenanceJobIntervalMs;
+    }
+
+    public int getManagerInvitationExpiryDays() {
+        return managerInvitationExpiryDays;
+    }
+
+    public void setManagerInvitationExpiryDays(int managerInvitationExpiryDays) {
+        this.managerInvitationExpiryDays = managerInvitationExpiryDays;
+    }
+
+    public int getRefreshTokenTtlDays() {
+        return refreshTokenTtlDays;
+    }
+
+    public void setRefreshTokenTtlDays(int refreshTokenTtlDays) {
+        this.refreshTokenTtlDays = refreshTokenTtlDays;
     }
 }

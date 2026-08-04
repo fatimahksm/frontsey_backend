@@ -1,16 +1,26 @@
 package com.dbwb.platform.website;
 
+import com.dbwb.platform.account.entity.Role;
 import com.dbwb.platform.audit.AuditService;
 import com.dbwb.platform.common.exception.BusinessRuleViolationException;
 import com.dbwb.platform.common.exception.ResourceNotFoundException;
+import com.dbwb.platform.manager.entity.InvitationStatus;
+import com.dbwb.platform.manager.entity.ManagerAccess;
+import com.dbwb.platform.manager.entity.Permission;
+import com.dbwb.platform.manager.repository.ManagerAccessRepository;
+import com.dbwb.platform.portfolio.repository.ServiceItemRepository;
 import com.dbwb.platform.profile.repository.BusinessProfileRepository;
+import com.dbwb.platform.publicapi.PublicWebsiteService;
+import com.dbwb.platform.publicapi.dto.PublicWebsiteResponse;
 import com.dbwb.platform.security.AuthenticatedAccount;
 import com.dbwb.platform.subscription.SubscriptionQueryService;
 import com.dbwb.platform.theme.entity.Theme;
 import com.dbwb.platform.theme.repository.ThemeRepository;
+import com.dbwb.platform.website.dto.AccessRole;
 import com.dbwb.platform.website.dto.CreateWebsiteRequest;
 import com.dbwb.platform.website.dto.UpdateDraftContentRequest;
 import com.dbwb.platform.website.entity.BusinessWebsite;
+import com.dbwb.platform.website.entity.TemplateType;
 import com.dbwb.platform.website.entity.WebsiteStatus;
 import com.dbwb.platform.website.repository.BusinessWebsiteRepository;
 import com.dbwb.platform.menu.repository.CategoryRepository;
@@ -19,7 +29,9 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Instant;
+import java.util.ArrayList;
 import java.util.List;
+import java.util.Set;
 import java.util.UUID;
 
 /**
@@ -34,10 +46,13 @@ public class WebsiteService {
     private final AccountRepository accountRepository;
     private final BusinessProfileRepository profileRepository;
     private final CategoryRepository categoryRepository;
+    private final ServiceItemRepository serviceItemRepository;
     private final SlugGenerator slugGenerator;
     private final WebsiteAccessGuard accessGuard;
     private final SubscriptionQueryService subscriptionQueryService;
     private final AuditService auditService;
+    private final PublicWebsiteService publicWebsiteService;
+    private final ManagerAccessRepository managerAccessRepository;
 
     public WebsiteService(
             BusinessWebsiteRepository websiteRepository,
@@ -45,19 +60,29 @@ public class WebsiteService {
             AccountRepository accountRepository,
             BusinessProfileRepository profileRepository,
             CategoryRepository categoryRepository,
+            ServiceItemRepository serviceItemRepository,
             SlugGenerator slugGenerator,
             WebsiteAccessGuard accessGuard,
             SubscriptionQueryService subscriptionQueryService,
-            AuditService auditService) {
+            AuditService auditService,
+            PublicWebsiteService publicWebsiteService,
+            ManagerAccessRepository managerAccessRepository) {
         this.websiteRepository = websiteRepository;
         this.themeRepository = themeRepository;
         this.accountRepository = accountRepository;
         this.profileRepository = profileRepository;
         this.categoryRepository = categoryRepository;
+        this.serviceItemRepository = serviceItemRepository;
         this.slugGenerator = slugGenerator;
         this.accessGuard = accessGuard;
         this.subscriptionQueryService = subscriptionQueryService;
         this.auditService = auditService;
+        this.publicWebsiteService = publicWebsiteService;
+        this.managerAccessRepository = managerAccessRepository;
+    }
+
+    /** Phase 4: a website plus the caller's role/permissions on it, so the frontend can gate UI without re-deriving access logic. */
+    public record WebsiteAccessInfo(BusinessWebsite website, AccessRole role, Set<Permission> permissions) {
     }
 
     @Transactional
@@ -71,6 +96,7 @@ public class WebsiteService {
         website.setBusinessName(request.businessName());
         website.setSlug(slugGenerator.generateUniqueSlug(request.businessName()));
         website.setPageMode(request.pageMode());
+        website.setTemplateType(request.templateType());
         website.setStatus(WebsiteStatus.DRAFT);
 
         if (request.themeId() != null) {
@@ -96,11 +122,48 @@ public class WebsiteService {
         return accessGuard.requireReadAccess(websiteId, caller);
     }
 
+    /** Same access check as get(), but also resolves the caller's role/permissions for this one website. */
+    @Transactional(readOnly = true)
+    public WebsiteAccessInfo getWithAccess(UUID websiteId, AuthenticatedAccount caller) {
+        BusinessWebsite website = accessGuard.requireReadAccess(websiteId, caller);
+        return accessInfoFor(website, caller);
+    }
+
+    /** Phase 4 (BR-MGR): every website the caller owns, plus every website they have ACCEPTED manager access to. */
+    @Transactional(readOnly = true)
+    public List<WebsiteAccessInfo> listAccessible(AuthenticatedAccount caller) {
+        List<WebsiteAccessInfo> result = new ArrayList<>();
+        websiteRepository.findByOwnerId(caller.accountId())
+                .forEach(website -> result.add(new WebsiteAccessInfo(website, AccessRole.OWNER, Set.of())));
+        managerAccessRepository.findByManagerAccountIdAndStatus(caller.accountId(), InvitationStatus.ACCEPTED)
+                .forEach(access -> result.add(new WebsiteAccessInfo(access.getWebsite(), AccessRole.MANAGER, access.getPermissions())));
+        return result;
+    }
+
+    private WebsiteAccessInfo accessInfoFor(BusinessWebsite website, AuthenticatedAccount caller) {
+        if (caller.role() == Role.SUPER_ADMIN || website.getOwner().getId().equals(caller.accountId())) {
+            return new WebsiteAccessInfo(website, AccessRole.OWNER, Set.of());
+        }
+        Set<Permission> permissions = managerAccessRepository
+                .findByWebsiteIdAndManagerAccountId(website.getId(), caller.accountId())
+                .map(ManagerAccess::getPermissions)
+                .orElse(Set.of());
+        return new WebsiteAccessInfo(website, AccessRole.MANAGER, permissions);
+    }
+
+    /** Lets the owner/a manager see the current draft rendered exactly as customers would see it, before publishing. */
+    @Transactional(readOnly = true)
+    public PublicWebsiteResponse getPreview(UUID websiteId, AuthenticatedAccount caller) {
+        BusinessWebsite website = accessGuard.requireReadAccess(websiteId, caller);
+        return publicWebsiteService.assembleForPreview(website);
+    }
+
     @Transactional
     public BusinessWebsite saveDraft(UUID websiteId, AuthenticatedAccount caller, UpdateDraftContentRequest request) {
         BusinessWebsite website = accessGuard.requirePermission(
                 websiteId, caller, com.dbwb.platform.manager.entity.Permission.MANAGE_THEME_AND_CONTENT);
         website.setDraftContent(request.content());
+        website.setOrderingMode(request.orderingMode());
         return website;
     }
 
@@ -133,6 +196,34 @@ public class WebsiteService {
         return website;
     }
 
+    /** BR-SITE-002: switch themes post-creation, or clear it (themeId = null) to go back to build-from-scratch. */
+    @Transactional
+    public BusinessWebsite updateTheme(UUID websiteId, AuthenticatedAccount caller, UUID themeId) {
+        BusinessWebsite website = accessGuard.requirePermission(
+                websiteId, caller, com.dbwb.platform.manager.entity.Permission.MANAGE_THEME_AND_CONTENT);
+        if (themeId == null) {
+            website.setTheme(null);
+            return website;
+        }
+        Theme theme = themeRepository.findById(themeId)
+                .orElseThrow(() -> new ResourceNotFoundException("Theme not found."));
+        website.setTheme(theme);
+        return website;
+    }
+
+    /** Layout is a structural choice, not just styling - switchable anytime, same as Theme, but scoped to the website's current TemplateType. */
+    @Transactional
+    public BusinessWebsite updateLayoutVariant(UUID websiteId, AuthenticatedAccount caller, com.dbwb.platform.website.entity.LayoutVariant layoutVariant) {
+        BusinessWebsite website = accessGuard.requirePermission(
+                websiteId, caller, com.dbwb.platform.manager.entity.Permission.MANAGE_THEME_AND_CONTENT);
+        if (layoutVariant.templateType() != website.getTemplateType()) {
+            throw new BusinessRuleViolationException(
+                    "\"" + layoutVariant + "\" is not a valid layout for a " + website.getTemplateType() + " website.");
+        }
+        website.setLayoutVariant(layoutVariant);
+        return website;
+    }
+
     /** BR-THEME-007: restore the immediately previous published version. */
     @Transactional
     public BusinessWebsite restorePreviousVersion(UUID websiteId, AuthenticatedAccount caller) {
@@ -160,9 +251,15 @@ public class WebsiteService {
             throw new BusinessRuleViolationException("Business profile/contact information is required before publishing.");
         }
 
-        long categoryCount = categoryRepository.countByWebsiteId(website.getId());
-        if (categoryCount == 0) {
-            throw new BusinessRuleViolationException("At least one menu category and item is required before publishing.");
+        if (website.getTemplateType() == TemplateType.PORTFOLIO) {
+            if (serviceItemRepository.countByWebsiteId(website.getId()) == 0) {
+                throw new BusinessRuleViolationException("At least one service is required before publishing.");
+            }
+        } else {
+            long categoryCount = categoryRepository.countByWebsiteId(website.getId());
+            if (categoryCount == 0) {
+                throw new BusinessRuleViolationException("At least one menu category and item is required before publishing.");
+            }
         }
 
         // BR-RULE-013: WhatsApp number mandatory when WhatsApp ordering is enabled.

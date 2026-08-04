@@ -1,9 +1,12 @@
 package com.dbwb.platform.website;
 
 import com.dbwb.platform.common.dto.ApiResponse;
+import com.dbwb.platform.publicapi.dto.PublicWebsiteResponse;
 import com.dbwb.platform.security.CurrentAccount;
 import com.dbwb.platform.website.dto.CreateWebsiteRequest;
 import com.dbwb.platform.website.dto.UpdateDraftContentRequest;
+import com.dbwb.platform.website.dto.UpdateLayoutVariantRequest;
+import com.dbwb.platform.website.dto.UpdateThemeRequest;
 import com.dbwb.platform.website.dto.WebsiteResponse;
 import jakarta.validation.Valid;
 import org.springframework.web.bind.annotation.DeleteMapping;
@@ -42,15 +45,42 @@ public class WebsiteController {
         return ApiResponse.ok(websites.stream().map(WebsiteResponse::from).toList());
     }
 
+    /** Phase 4 (BR-MGR): every website the caller owns or has ACCEPTED manager access to, with their role/permissions on each. */
+    @GetMapping("/accessible")
+    public ApiResponse<List<WebsiteResponse>> listAccessible() {
+        var accessible = websiteService.listAccessible(currentAccount.get());
+        return ApiResponse.ok(accessible.stream()
+                .map(a -> WebsiteResponse.from(a.website(), a.role(), a.permissions()))
+                .toList());
+    }
+
     @GetMapping("/{id}")
     public ApiResponse<WebsiteResponse> get(@PathVariable UUID id) {
-        return ApiResponse.ok(WebsiteResponse.from(websiteService.get(id, currentAccount.get())));
+        var access = websiteService.getWithAccess(id, currentAccount.get());
+        return ApiResponse.ok(WebsiteResponse.from(access.website(), access.role(), access.permissions()));
+    }
+
+    @GetMapping("/{id}/preview")
+    public ApiResponse<PublicWebsiteResponse> preview(@PathVariable UUID id) {
+        return ApiResponse.ok(websiteService.getPreview(id, currentAccount.get()));
     }
 
     @PutMapping("/{id}/draft")
     public ApiResponse<WebsiteResponse> saveDraft(@PathVariable UUID id, @Valid @RequestBody UpdateDraftContentRequest request) {
         var website = websiteService.saveDraft(id, currentAccount.get(), request);
         return ApiResponse.ok(WebsiteResponse.from(website), "Draft saved.");
+    }
+
+    @PutMapping("/{id}/theme")
+    public ApiResponse<WebsiteResponse> updateTheme(@PathVariable UUID id, @RequestBody UpdateThemeRequest request) {
+        var website = websiteService.updateTheme(id, currentAccount.get(), request.themeId());
+        return ApiResponse.ok(WebsiteResponse.from(website), "Theme updated.");
+    }
+
+    @PutMapping("/{id}/layout")
+    public ApiResponse<WebsiteResponse> updateLayoutVariant(@PathVariable UUID id, @Valid @RequestBody UpdateLayoutVariantRequest request) {
+        var website = websiteService.updateLayoutVariant(id, currentAccount.get(), request.layoutVariant());
+        return ApiResponse.ok(WebsiteResponse.from(website), "Layout updated.");
     }
 
     @PostMapping("/{id}/publish")

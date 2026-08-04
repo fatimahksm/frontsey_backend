@@ -5,9 +5,12 @@ import com.dbwb.platform.plan.entity.Plan;
 import com.dbwb.platform.plan.entity.PlanCode;
 import org.springframework.data.jpa.repository.JpaRepository;
 
+import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 
 public interface PlanRepository extends JpaRepository<Plan, UUID> {
     Optional<Plan> findByCodeAndBillingPeriod(PlanCode code, BillingPeriod billingPeriod);
+
+    List<Plan> findByActiveTrue();
 }

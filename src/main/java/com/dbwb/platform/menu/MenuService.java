@@ -159,6 +159,13 @@ public class MenuService {
         return menuItemRepository.findByWebsiteIdAndTrashedAtIsNull(websiteId);
     }
 
+    /** BR-MENU-011: what's currently in the trash, so the Owner has something to restore() from. */
+    @Transactional(readOnly = true)
+    public List<MenuItem> listTrashedItems(UUID websiteId, AuthenticatedAccount caller) {
+        accessGuard.requireReadAccess(websiteId, caller);
+        return menuItemRepository.findByWebsiteIdAndTrashedAtIsNotNull(websiteId);
+    }
+
     /** BR-MENU-011: soft-delete into trash; permanent purge happens via a scheduled job after the retention window. */
     @Transactional
     public void trashItem(UUID websiteId, UUID itemId, AuthenticatedAccount caller) {
@@ -185,7 +192,26 @@ public class MenuService {
     @Transactional
     public void bulkSetAvailability(UUID websiteId, AuthenticatedAccount caller, List<UUID> itemIds, ItemAvailability availability) {
         accessGuard.requirePermission(websiteId, caller, Permission.MANAGE_MENU);
-        itemIds.forEach(id -> loadItem(id, websiteId).setAvailability(availability));
+        itemIds.forEach(id -> {
+            MenuItem item = loadItem(id, websiteId);
+            item.setAvailability(availability);
+            item.setUnavailableUntil(null); // a manual (not time-boxed) change always clears any pending auto-release
+        });
+    }
+
+    /**
+     * BR-MENU-006: marks a single item unavailable until a specific instant
+     * (today-only/relative/exact date-time are all just different instants
+     * computed by the caller); releaseExpiredTemporaryUnavailability() reverts
+     * it automatically once that instant passes.
+     */
+    @Transactional
+    public MenuItem setTemporaryUnavailability(UUID websiteId, UUID itemId, AuthenticatedAccount caller, Instant until) {
+        accessGuard.requirePermission(websiteId, caller, Permission.MANAGE_MENU);
+        MenuItem item = loadItem(itemId, websiteId);
+        item.setAvailability(ItemAvailability.UNAVAILABLE);
+        item.setUnavailableUntil(until);
+        return item;
     }
 
     /** BR-MENU-010: bulk deletion (moves to trash, same as single delete). */
@@ -210,8 +236,11 @@ public class MenuService {
      */
     @Transactional
     public void releaseExpiredTemporaryUnavailability() {
-        // Intentionally simple for the MVP skeleton: a production version would
-        // query only items with unavailableUntil <= now instead of scanning all.
+        menuItemRepository.findByAvailabilityAndUnavailableUntilBefore(ItemAvailability.UNAVAILABLE, Instant.now())
+                .forEach(item -> {
+                    item.setAvailability(ItemAvailability.AVAILABLE);
+                    item.setUnavailableUntil(null);
+                });
     }
 
     // ----- helpers -----
@@ -224,6 +253,7 @@ public class MenuService {
         item.setDiscountPrice(request.discountPrice());
         item.setImageUrl(request.imageUrl());
         item.setMaxOrderQuantity(request.maxOrderQuantity());
+        item.setFixedBoxItem(request.fixedBoxItem());
     }
 
     private void validateDiscount(java.math.BigDecimal price, java.math.BigDecimal discountPrice) {

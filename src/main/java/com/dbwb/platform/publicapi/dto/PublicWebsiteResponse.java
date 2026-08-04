@@ -1,8 +1,13 @@
 package com.dbwb.platform.publicapi.dto;
 
+import com.dbwb.platform.sections.entity.PageSectionType;
+import com.dbwb.platform.theme.dto.ThemeConfig;
+import com.dbwb.platform.website.entity.LayoutVariant;
 import com.dbwb.platform.website.entity.OrderingMode;
 import com.dbwb.platform.website.entity.PageMode;
+import com.dbwb.platform.website.entity.TemplateType;
 
+import java.math.BigDecimal;
 import java.util.List;
 import java.util.Map;
 
@@ -14,6 +19,8 @@ public record PublicWebsiteResponse(
         String businessName,
         String slug,
         PageMode pageMode,
+        TemplateType templateType,
+        LayoutVariant layoutVariant,
         OrderingMode orderingMode,
         String primaryLanguage,
         String currency,
@@ -22,8 +29,23 @@ public record PublicWebsiteResponse(
         List<PublicOpeningHours> openingHours,
         List<PublicCategory> categories,
         List<PublicDeliveryArea> deliveryAreas,
-        List<String> galleryImageUrls
+        /** Populated only for TemplateType.PORTFOLIO sites; empty for MENU_ORDERING. */
+        List<PublicService> services,
+        List<String> galleryImageUrls,
+        PublicSeoMetadata seo,
+        /** Owner-added extra sections (About/Testimonials/FAQ/Team), in display order. */
+        List<PublicPageSection> sections,
+        /**
+         * Phase 3: the website's effective design system - its selected Theme's
+         * validated config, or {@link ThemeConfig#defaults()} when building from
+         * scratch. Single source of truth shared by the public site, the owner's
+         * draft preview, and (in future) the published snapshot.
+         */
+        ThemeConfig theme
 ) {
+    public record PublicSeoMetadata(String metaTitle, String metaDescription, String ogImageUrl) {
+    }
+
     public record PublicProfile(
             String description, String logoUrl, String coverImageUrl, String phone, String whatsappNumber,
             String email, String address, String googleMapsUrl, String instagramUrl, String tiktokUrl,
@@ -39,5 +61,12 @@ public record PublicWebsiteResponse(
 
     public record PublicDeliveryArea(String id, String name, java.math.BigDecimal fee,
                                       java.math.BigDecimal minimumOrder, java.math.BigDecimal freeThreshold) {
+    }
+
+    public record PublicService(String id, String name, String description, BigDecimal price, String imageUrl) {
+    }
+
+    /** `data` is opaque JSON whose shape depends on `type` - parsed on the frontend. */
+    public record PublicPageSection(String id, PageSectionType type, String data) {
     }
 }

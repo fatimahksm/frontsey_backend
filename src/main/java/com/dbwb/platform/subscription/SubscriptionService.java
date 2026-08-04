@@ -138,7 +138,7 @@ public class SubscriptionService {
     @Transactional(readOnly = true)
     public Subscription get(UUID websiteId, AuthenticatedAccount caller) {
         accessGuard.requireReadAccess(websiteId, caller);
-        return subscriptionRepository.findByWebsiteId(websiteId)
+        return subscriptionRepository.findByWebsiteIdWithPlan(websiteId)
                 .orElseThrow(() -> new ResourceNotFoundException("No subscription found for this website."));
     }
 
