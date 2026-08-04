@@ -11,4 +11,10 @@ public interface CategoryRepository extends JpaRepository<Category, UUID> {
     List<Category> findByWebsiteId(UUID websiteId);
     long countByWebsiteId(UUID websiteId);
     Optional<Category> findByWebsiteIdAndNameIgnoreCase(UUID websiteId, String name);
+
+    /** Top-level categories only - the roots of the one-level category tree. */
+    List<Category> findByWebsiteIdAndParentIsNull(UUID websiteId);
+
+    /** The sub-categories directly under one parent. */
+    List<Category> findByParentId(UUID parentId);
 }

@@ -4,6 +4,7 @@ import com.dbwb.platform.account.entity.Role;
 import com.dbwb.platform.common.config.BusinessRuleProperties;
 import com.dbwb.platform.common.exception.BusinessRuleViolationException;
 import com.dbwb.platform.manager.entity.Permission;
+import com.dbwb.platform.menu.dto.CategoryDeletionMode;
 import com.dbwb.platform.menu.dto.MenuItemRequest;
 import com.dbwb.platform.menu.entity.Category;
 import com.dbwb.platform.menu.entity.ItemAvailability;
@@ -31,6 +32,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
@@ -124,6 +126,72 @@ class MenuServiceTest {
         assertThatThrownBy(() -> menuService.createItem(websiteId, caller, request))
                 .isInstanceOf(BusinessRuleViolationException.class)
                 .hasMessageContaining("cannot be negative");
+    }
+
+    @Test
+    void createCategoryUnderAParentMakesItASubcategory() {
+        Category parent = categoryWithId();
+        when(accessGuard.requirePermission(websiteId, caller, Permission.MANAGE_MENU)).thenReturn(website);
+        when(categoryRepository.findById(parent.getId())).thenReturn(Optional.of(parent));
+        when(categoryRepository.save(any(Category.class))).thenAnswer(inv -> inv.getArgument(0));
+
+        Category created = menuService.createCategory(websiteId, caller, "Iced", parent.getId());
+
+        assertThat(created.getName()).isEqualTo("Iced");
+        assertThat(created.getParent()).isEqualTo(parent);
+    }
+
+    @Test
+    void subcategoriesCannotNestMoreThanOneLevelDeep() {
+        Category parent = categoryWithId();
+        Category subcategory = categoryWithId();
+        subcategory.setParent(parent);
+        when(accessGuard.requirePermission(websiteId, caller, Permission.MANAGE_MENU)).thenReturn(website);
+        when(categoryRepository.findById(subcategory.getId())).thenReturn(Optional.of(subcategory));
+
+        assertThatThrownBy(() -> menuService.createCategory(websiteId, caller, "Decaf", subcategory.getId()))
+                .isInstanceOf(BusinessRuleViolationException.class)
+                .hasMessageContaining("already a sub-category");
+    }
+
+    @Test
+    void deletingAParentAlsoDeletesItsSubcategoriesAndTrashesEveryItemUnderneath() {
+        Category parent = categoryWithId();
+        Category subcategory = categoryWithId();
+        subcategory.setParent(parent);
+        MenuItem itemInSubcategory = itemWithId();
+        when(accessGuard.requirePermission(websiteId, caller, Permission.MANAGE_MENU)).thenReturn(website);
+        when(categoryRepository.findById(parent.getId())).thenReturn(Optional.of(parent));
+        when(categoryRepository.findByParentId(parent.getId())).thenReturn(List.of(subcategory));
+        when(menuItemRepository.findByWebsiteIdAndCategoryIdAndTrashedAtIsNull(websiteId, parent.getId()))
+                .thenReturn(List.of());
+        when(menuItemRepository.findByWebsiteIdAndCategoryIdAndTrashedAtIsNull(websiteId, subcategory.getId()))
+                .thenReturn(List.of(itemInSubcategory));
+
+        menuService.deleteCategory(websiteId, parent.getId(), caller, CategoryDeletionMode.DELETE_ITEMS, null);
+
+        assertThat(itemInSubcategory.getTrashedAt()).isNotNull();
+        verify(categoryRepository).delete(subcategory);
+        verify(categoryRepository).delete(parent);
+    }
+
+    @Test
+    void itemsCannotBeMovedIntoASubcategoryThatIsBeingDeletedAlongWithItsParent() {
+        Category parent = categoryWithId();
+        Category subcategory = categoryWithId();
+        subcategory.setParent(parent);
+        when(accessGuard.requirePermission(websiteId, caller, Permission.MANAGE_MENU)).thenReturn(website);
+        when(categoryRepository.findById(parent.getId())).thenReturn(Optional.of(parent));
+        when(categoryRepository.findByParentId(parent.getId())).thenReturn(List.of(subcategory));
+        when(menuItemRepository.findByWebsiteIdAndCategoryIdAndTrashedAtIsNull(websiteId, parent.getId()))
+                .thenReturn(List.of(itemWithId()));
+        when(menuItemRepository.findByWebsiteIdAndCategoryIdAndTrashedAtIsNull(websiteId, subcategory.getId()))
+                .thenReturn(List.of());
+
+        assertThatThrownBy(() -> menuService.deleteCategory(
+                websiteId, parent.getId(), caller, CategoryDeletionMode.MOVE_ITEMS_TO_CATEGORY, subcategory.getId()))
+                .isInstanceOf(BusinessRuleViolationException.class)
+                .hasMessageContaining("being deleted");
     }
 
     private Category categoryWithId() {

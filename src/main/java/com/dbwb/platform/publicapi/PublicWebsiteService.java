@@ -139,24 +139,20 @@ public class PublicWebsiteService {
                         h.getClosesAt() == null ? null : h.getClosesAt().toString()))
                 .toList();
 
-        List<PublicWebsiteResponse.PublicCategory> categories = categoryRepository.findByWebsiteId(website.getId())
-                .stream()
-                .map(category -> {
-                    var items = menuItemRepository
-                            .findByWebsiteIdAndCategoryIdAndTrashedAtIsNull(website.getId(), category.getId())
-                            .stream()
-                            .map(item -> {
-                                var sizes = sizeVariantRepository.findByMenuItemId(item.getId());
-                                var groups = addonGroupRepository.findByMenuItemId(item.getId());
-                                Map<java.util.UUID, List<Addon>> addonsByGroup = new HashMap<>();
-                                for (AddonGroup g : groups) {
-                                    addonsByGroup.put(g.getId(), addonRepository.findByAddonGroupId(g.getId()));
-                                }
-                                var boxVariants = boxVariantRepository.findByMenuItemId(item.getId());
-                                return PublicMenuItem.from(item, sizes, groups, addonsByGroup, boxVariants);
-                            })
+        // Two-level tree: top-level categories carry their own items plus their
+        // sub-categories. Items filed directly against a parent still show, so
+        // a menu can mix "Coffee -> Hot/Iced" with un-grouped items.
+        List<PublicWebsiteResponse.PublicCategory> categories = categoryRepository
+                .findByWebsiteIdAndParentIsNull(website.getId()).stream()
+                .map(parent -> {
+                    List<PublicWebsiteResponse.PublicCategory> subcategories = categoryRepository
+                            .findByParentId(parent.getId()).stream()
+                            .map(sub -> new PublicWebsiteResponse.PublicCategory(
+                                    sub.getId().toString(), sub.getName(), publicItemsOf(website.getId(), sub.getId()), List.of()))
                             .toList();
-                    return new PublicWebsiteResponse.PublicCategory(category.getId().toString(), category.getName(), items);
+                    return new PublicWebsiteResponse.PublicCategory(
+                            parent.getId().toString(), parent.getName(),
+                            publicItemsOf(website.getId(), parent.getId()), subcategories);
                 })
                 .toList();
 
@@ -195,5 +191,22 @@ public class PublicWebsiteService {
                 website.getBusinessName(), website.getSlug(), website.getPageMode(), website.getTemplateType(),
                 website.getEffectiveLayoutVariant(), website.getOrderingMode(), website.getPrimaryLanguage(), website.getCurrency(),
                 content, profile, hours, categories, areas, services, galleryUrls, seo, sections, theme);
+    }
+
+    /** The public-safe, non-trashed items of one category, with their sizes/add-ons/box variants resolved. */
+    private List<PublicMenuItem> publicItemsOf(UUID websiteId, UUID categoryId) {
+        return menuItemRepository.findByWebsiteIdAndCategoryIdAndTrashedAtIsNull(websiteId, categoryId)
+                .stream()
+                .map(item -> {
+                    var sizes = sizeVariantRepository.findByMenuItemId(item.getId());
+                    var groups = addonGroupRepository.findByMenuItemId(item.getId());
+                    Map<UUID, List<Addon>> addonsByGroup = new HashMap<>();
+                    for (AddonGroup g : groups) {
+                        addonsByGroup.put(g.getId(), addonRepository.findByAddonGroupId(g.getId()));
+                    }
+                    var boxVariants = boxVariantRepository.findByMenuItemId(item.getId());
+                    return PublicMenuItem.from(item, sizes, groups, addonsByGroup, boxVariants);
+                })
+                .toList();
     }
 }
