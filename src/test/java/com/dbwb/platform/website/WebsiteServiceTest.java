@@ -39,6 +39,8 @@ import java.util.UUID;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.Mockito.lenient;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
 /**
@@ -61,6 +63,7 @@ class WebsiteServiceTest {
     @Mock private com.dbwb.platform.audit.AuditService auditService;
     @Mock private PublicWebsiteService publicWebsiteService;
     @Mock private ManagerAccessRepository managerAccessRepository;
+    @Mock private com.dbwb.platform.theme.ThemeConfigValidator themeConfigValidator;
 
     private WebsiteService websiteService;
 
@@ -73,7 +76,7 @@ class WebsiteServiceTest {
         websiteService = new WebsiteService(
                 websiteRepository, themeRepository, accountRepository, profileRepository, categoryRepository,
                 serviceItemRepository, slugGenerator, accessGuard, subscriptionQueryService, auditService,
-                publicWebsiteService, managerAccessRepository);
+                publicWebsiteService, managerAccessRepository, themeConfigValidator);
 
         website = TestEntities.withId(new BusinessWebsite(), websiteId);
         website.setBusinessName("Test Business");
@@ -92,6 +95,28 @@ class WebsiteServiceTest {
 
     private static <T> T eq(T value) {
         return org.mockito.ArgumentMatchers.eq(value);
+    }
+
+    @Test
+    void updateThemeConfigStoresTheOverrideAfterValidatingIt() {
+        when(accessGuard.requirePermission(websiteId, owner, Permission.MANAGE_THEME_AND_CONTENT)).thenReturn(website);
+
+        websiteService.updateThemeConfig(websiteId, owner, "{\"primaryColor\":\"#123456\"}");
+
+        assertThat(website.getThemeConfig()).isEqualTo("{\"primaryColor\":\"#123456\"}");
+        verify(themeConfigValidator).parseAndValidate("{\"primaryColor\":\"#123456\"}");
+    }
+
+    @Test
+    void updateThemeConfigWithNullClearsTheOverrideSoThePresetAppliesAgain() {
+        website.setThemeConfig("{\"primaryColor\":\"#123456\"}");
+        when(accessGuard.requirePermission(websiteId, owner, Permission.MANAGE_THEME_AND_CONTENT)).thenReturn(website);
+
+        websiteService.updateThemeConfig(websiteId, owner, null);
+
+        assertThat(website.getThemeConfig()).isNull();
+        // Nothing to validate when the override is being removed.
+        verifyNoInteractions(themeConfigValidator);
     }
 
     @Test

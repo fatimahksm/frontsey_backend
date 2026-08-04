@@ -14,6 +14,7 @@ import com.dbwb.platform.publicapi.PublicWebsiteService;
 import com.dbwb.platform.publicapi.dto.PublicWebsiteResponse;
 import com.dbwb.platform.security.AuthenticatedAccount;
 import com.dbwb.platform.subscription.SubscriptionQueryService;
+import com.dbwb.platform.theme.ThemeConfigValidator;
 import com.dbwb.platform.theme.entity.Theme;
 import com.dbwb.platform.theme.repository.ThemeRepository;
 import com.dbwb.platform.website.dto.AccessRole;
@@ -53,6 +54,7 @@ public class WebsiteService {
     private final AuditService auditService;
     private final PublicWebsiteService publicWebsiteService;
     private final ManagerAccessRepository managerAccessRepository;
+    private final ThemeConfigValidator themeConfigValidator;
 
     public WebsiteService(
             BusinessWebsiteRepository websiteRepository,
@@ -66,7 +68,8 @@ public class WebsiteService {
             SubscriptionQueryService subscriptionQueryService,
             AuditService auditService,
             PublicWebsiteService publicWebsiteService,
-            ManagerAccessRepository managerAccessRepository) {
+            ManagerAccessRepository managerAccessRepository,
+            ThemeConfigValidator themeConfigValidator) {
         this.websiteRepository = websiteRepository;
         this.themeRepository = themeRepository;
         this.accountRepository = accountRepository;
@@ -78,6 +81,7 @@ public class WebsiteService {
         this.subscriptionQueryService = subscriptionQueryService;
         this.auditService = auditService;
         this.publicWebsiteService = publicWebsiteService;
+        this.themeConfigValidator = themeConfigValidator;
         this.managerAccessRepository = managerAccessRepository;
     }
 
@@ -212,6 +216,28 @@ public class WebsiteService {
         Theme theme = themeRepository.findById(themeId)
                 .orElseThrow(() -> new ResourceNotFoundException("Theme not found."));
         website.setTheme(theme);
+        return website;
+    }
+
+    /**
+     * Replaces this website's own theme overrides, or clears them with null so
+     * it goes back to inheriting its preset.
+     *
+     * Validated up front for the same reason the admin path is: the column is
+     * free-text TEXT, and the public renderer reads it on every page load, so
+     * anything that would not parse into a ThemeConfig must be rejected here
+     * rather than silently falling back at render time.
+     */
+    @Transactional
+    public BusinessWebsite updateThemeConfig(UUID websiteId, AuthenticatedAccount caller, String themeConfig) {
+        BusinessWebsite website = accessGuard.requirePermission(
+                websiteId, caller, com.dbwb.platform.manager.entity.Permission.MANAGE_THEME_AND_CONTENT);
+        if (themeConfig == null || themeConfig.isBlank()) {
+            website.setThemeConfig(null);
+            return website;
+        }
+        themeConfigValidator.parseAndValidate(themeConfig);
+        website.setThemeConfig(themeConfig);
         return website;
     }
 

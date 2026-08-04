@@ -1,0 +1,12 @@
+-- Per-website theme overrides.
+--
+-- Until now colours lived only on the shared `themes` rows, which are
+-- admin-managed, so an owner could pick a preset but never adjust it. This
+-- column holds that website's own ThemeConfig JSON.
+--
+-- Nullable on purpose, and null is the common case: it means "no override,
+-- use the preset (or the built-in defaults when no preset is selected)".
+-- Backfilling every existing website with a copy of its preset would freeze
+-- those sites against future preset edits, so existing rows stay null and keep
+-- inheriting exactly as they do today.
+ALTER TABLE business_websites ADD COLUMN theme_config TEXT;

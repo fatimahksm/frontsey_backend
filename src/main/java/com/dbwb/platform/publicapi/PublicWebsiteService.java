@@ -183,9 +183,18 @@ public class PublicWebsiteService {
 
         // Phase 3: every website has an *effective* theme, whether it picked a preset or is building from
         // scratch - re-validated defensively here since the column is still free-text TEXT at the DB level.
-        ThemeConfig theme = website.getTheme() != null
-                ? themeConfigValidator.parseOrDefault(website.getTheme().getThemeConfig())
-                : ThemeConfig.defaults();
+        // The website's own overrides win over the preset it started from, and
+        // the preset over the built-in defaults. parseOrDefault rather than
+        // parseAndValidate at render time: a stored value that no longer parses
+        // must not take a published site down.
+        ThemeConfig theme;
+        if (website.getThemeConfig() != null && !website.getThemeConfig().isBlank()) {
+            theme = themeConfigValidator.parseOrDefault(website.getThemeConfig());
+        } else if (website.getTheme() != null) {
+            theme = themeConfigValidator.parseOrDefault(website.getTheme().getThemeConfig());
+        } else {
+            theme = ThemeConfig.defaults();
+        }
 
         return new PublicWebsiteResponse(
                 website.getBusinessName(), website.getSlug(), website.getPageMode(), website.getTemplateType(),

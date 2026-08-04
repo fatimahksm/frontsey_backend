@@ -42,6 +42,14 @@ public class BusinessWebsite extends BaseEntity {
     @JoinColumn(name = "theme_id")
     private Theme theme;
 
+    /**
+     * This website's own ThemeConfig JSON, overriding the preset's. Null means
+     * "no override" - the preset (or ThemeConfig.defaults()) applies unchanged,
+     * which is what every website did before owners could edit colours.
+     */
+    @Column(name = "theme_config", columnDefinition = "TEXT")
+    private String themeConfig;
+
     @Enumerated(EnumType.STRING)
     @Column(nullable = false)
     private PageMode pageMode;
@@ -120,6 +128,14 @@ public class BusinessWebsite extends BaseEntity {
 
     public void setTheme(Theme theme) {
         this.theme = theme;
+    }
+
+    public String getThemeConfig() {
+        return themeConfig;
+    }
+
+    public void setThemeConfig(String themeConfig) {
+        this.themeConfig = themeConfig;
     }
 
     public PageMode getPageMode() {
