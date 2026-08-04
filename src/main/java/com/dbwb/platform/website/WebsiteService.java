@@ -163,7 +163,11 @@ public class WebsiteService {
         BusinessWebsite website = accessGuard.requirePermission(
                 websiteId, caller, com.dbwb.platform.manager.entity.Permission.MANAGE_THEME_AND_CONTENT);
         website.setDraftContent(request.content());
-        website.setOrderingMode(request.orderingMode());
+        // A display-only layout has no cart to order from, so it pins the
+        // ordering mode regardless of what the client sends.
+        website.setOrderingMode(website.getEffectiveLayoutVariant().isDisplayOnly()
+                ? com.dbwb.platform.website.entity.OrderingMode.DISPLAY_ONLY
+                : request.orderingMode());
         return website;
     }
 
@@ -221,6 +225,11 @@ public class WebsiteService {
                     "\"" + layoutVariant + "\" is not a valid layout for a " + website.getTemplateType() + " website.");
         }
         website.setLayoutVariant(layoutVariant);
+        // Switching to a cart-less layout is itself the "this is a read-only
+        // menu" decision - the owner never has to also find an ordering switch.
+        if (layoutVariant.isDisplayOnly()) {
+            website.setOrderingMode(com.dbwb.platform.website.entity.OrderingMode.DISPLAY_ONLY);
+        }
         return website;
     }
 

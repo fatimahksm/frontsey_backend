@@ -56,7 +56,12 @@ public record PublicWebsiteResponse(
     public record PublicOpeningHours(String dayOfWeek, boolean open, String opensAt, String closesAt) {
     }
 
-    public record PublicCategory(String id, String name, List<PublicMenuItem> items) {
+    /**
+     * One level of nesting only: a top-level category carries its own
+     * un-grouped items plus its sub-categories, and each sub-category's own
+     * {@code subcategories} is always empty.
+     */
+    public record PublicCategory(String id, String name, List<PublicMenuItem> items, List<PublicCategory> subcategories) {
     }
 
     public record PublicDeliveryArea(String id, String name, java.math.BigDecimal fee,

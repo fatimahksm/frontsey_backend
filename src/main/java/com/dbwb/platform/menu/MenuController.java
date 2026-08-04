@@ -35,9 +35,11 @@ public class MenuController {
 
     // --- Categories ---
 
+    /** {@code parentId} omitted creates a top-level category; supplied creates a sub-category under it. */
     @PostMapping("/categories")
-    public ApiResponse<CategoryDto> createCategory(@PathVariable UUID websiteId, @RequestParam String name) {
-        var category = menuService.createCategory(websiteId, currentAccount.get(), name);
+    public ApiResponse<CategoryDto> createCategory(@PathVariable UUID websiteId, @RequestParam String name,
+                                                    @RequestParam(required = false) UUID parentId) {
+        var category = menuService.createCategory(websiteId, currentAccount.get(), name, parentId);
         return ApiResponse.ok(CategoryDto.from(category));
     }
 

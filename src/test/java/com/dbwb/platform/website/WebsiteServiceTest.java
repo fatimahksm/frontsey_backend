@@ -19,9 +19,11 @@ import com.dbwb.platform.testsupport.TestEntities;
 import com.dbwb.platform.theme.repository.ThemeRepository;
 import com.dbwb.platform.website.entity.BusinessWebsite;
 import com.dbwb.platform.website.entity.LayoutVariant;
+import com.dbwb.platform.website.entity.OrderingMode;
 import com.dbwb.platform.website.entity.PageMode;
 import com.dbwb.platform.website.entity.TemplateType;
 import com.dbwb.platform.website.entity.WebsiteStatus;
+import com.dbwb.platform.website.dto.UpdateDraftContentRequest;
 import com.dbwb.platform.website.repository.BusinessWebsiteRepository;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -163,6 +165,38 @@ class WebsiteServiceTest {
         BusinessWebsite updated = websiteService.updateLayoutVariant(websiteId, owner, LayoutVariant.MENU_GRID);
 
         assertThat(updated.getEffectiveLayoutVariant()).isEqualTo(LayoutVariant.MENU_GRID);
+    }
+
+    @Test
+    void switchingToTheCartLessClassicLayoutPinsTheWebsiteToDisplayOnly() {
+        website.setTemplateType(TemplateType.MENU_ORDERING);
+        website.setOrderingMode(OrderingMode.WHATSAPP_ORDERING);
+
+        BusinessWebsite updated = websiteService.updateLayoutVariant(websiteId, owner, LayoutVariant.MENU_CLASSIC);
+
+        assertThat(updated.getOrderingMode()).isEqualTo(OrderingMode.DISPLAY_ONLY);
+    }
+
+    @Test
+    void savingADraftCannotReEnableOrderingOnACartLessLayout() {
+        website.setTemplateType(TemplateType.MENU_ORDERING);
+        website.setLayoutVariant(LayoutVariant.MENU_CLASSIC);
+
+        BusinessWebsite updated = websiteService.saveDraft(
+                websiteId, owner, new UpdateDraftContentRequest("{}", OrderingMode.WHATSAPP_ORDERING));
+
+        assertThat(updated.getOrderingMode()).isEqualTo(OrderingMode.DISPLAY_ONLY);
+    }
+
+    @Test
+    void savingADraftKeepsTheRequestedOrderingModeOnACartLayout() {
+        website.setTemplateType(TemplateType.MENU_ORDERING);
+        website.setLayoutVariant(LayoutVariant.MENU_GRID);
+
+        BusinessWebsite updated = websiteService.saveDraft(
+                websiteId, owner, new UpdateDraftContentRequest("{}", OrderingMode.WHATSAPP_ORDERING));
+
+        assertThat(updated.getOrderingMode()).isEqualTo(OrderingMode.WHATSAPP_ORDERING);
     }
 
     @Test

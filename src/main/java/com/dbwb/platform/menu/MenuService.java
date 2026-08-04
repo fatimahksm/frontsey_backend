@@ -19,6 +19,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
 
@@ -48,12 +49,20 @@ public class MenuService {
 
     // ----- Categories -----
 
+    /**
+     * Creates a top-level category, or a sub-category when {@code parentId} is
+     * given. The tree is capped at one level (BR-MENU-001): a category that
+     * already has a parent cannot be used as one.
+     */
     @Transactional
-    public Category createCategory(UUID websiteId, AuthenticatedAccount caller, String name) {
+    public Category createCategory(UUID websiteId, AuthenticatedAccount caller, String name, UUID parentId) {
         BusinessWebsite website = accessGuard.requirePermission(websiteId, caller, Permission.MANAGE_MENU);
         Category category = new Category();
         category.setWebsite(website);
         category.setName(name);
+        if (parentId != null) {
+            category.setParent(requireTopLevel(loadCategory(parentId, websiteId)));
+        }
         return categoryRepository.save(category);
     }
 
@@ -71,33 +80,46 @@ public class MenuService {
         return category;
     }
 
-    /** BR-MENU-012: requires an explicit Owner decision when the category still has items. */
+    /**
+     * BR-MENU-012: requires an explicit Owner decision when the category still
+     * has items. Deleting a parent takes its sub-categories with it, so that
+     * single decision covers every item underneath - not just the ones filed
+     * directly against the parent.
+     */
     @Transactional
     public void deleteCategory(UUID websiteId, UUID categoryId, AuthenticatedAccount caller,
                                 CategoryDeletionMode mode, UUID targetCategoryId) {
         accessGuard.requirePermission(websiteId, caller, Permission.MANAGE_MENU);
         Category category = loadCategory(categoryId, websiteId);
-        long itemCount = menuItemRepository.countByCategoryIdAndTrashedAtIsNull(categoryId);
+        List<Category> subcategories = categoryRepository.findByParentId(categoryId);
 
-        if (itemCount > 0) {
+        List<Category> removed = new ArrayList<>(subcategories);
+        removed.add(category);
+        List<MenuItem> items = removed.stream()
+                .flatMap(c -> menuItemRepository
+                        .findByWebsiteIdAndCategoryIdAndTrashedAtIsNull(websiteId, c.getId()).stream())
+                .toList();
+
+        if (!items.isEmpty()) {
             switch (mode) {
                 case CANCEL -> throw new BusinessRuleViolationException("Category deletion cancelled.");
-                case DELETE_ITEMS -> {
-                    List<MenuItem> items = menuItemRepository.findByWebsiteIdAndCategoryIdAndTrashedAtIsNull(websiteId, categoryId);
-                    items.forEach(i -> i.setTrashedAt(Instant.now()));
-                }
+                case DELETE_ITEMS -> items.forEach(i -> i.setTrashedAt(Instant.now()));
                 case MOVE_ITEMS_TO_CATEGORY -> {
                     if (targetCategoryId == null) {
                         throw new BusinessRuleViolationException("A target category is required to move items.");
                     }
+                    if (removed.stream().anyMatch(c -> c.getId().equals(targetCategoryId))) {
+                        throw new BusinessRuleViolationException(
+                                "Items cannot be moved into a category that is being deleted.");
+                    }
                     Category target = loadCategory(targetCategoryId, websiteId);
-                    List<MenuItem> items = menuItemRepository.findByWebsiteIdAndCategoryIdAndTrashedAtIsNull(websiteId, categoryId);
                     items.forEach(i -> i.setCategory(target));
                 }
             }
         }
         // BR-MENU-013: no category trash/restore - deletion is immediate.
-        categoryRepository.delete(category);
+        // Sub-categories come first so the parent's rows are unreferenced.
+        removed.forEach(categoryRepository::delete);
     }
 
     // ----- Items -----
@@ -275,6 +297,15 @@ public class MenuService {
             throw new ResourceNotFoundException("Category not found.");
         }
         return category;
+    }
+
+    /** Guards the one-level cap: only a category without a parent may become one. */
+    private Category requireTopLevel(Category candidateParent) {
+        if (candidateParent.getParent() != null) {
+            throw new BusinessRuleViolationException(
+                    "\"" + candidateParent.getName() + "\" is already a sub-category, so it cannot hold sub-categories of its own.");
+        }
+        return candidateParent;
     }
 
     private MenuItem loadItem(UUID itemId, UUID websiteId) {
