@@ -9,4 +9,7 @@
 -- Backfilling every existing website with a copy of its preset would freeze
 -- those sites against future preset edits, so existing rows stay null and keep
 -- inheriting exactly as they do today.
-ALTER TABLE business_websites ADD COLUMN theme_config TEXT;
+-- IF NOT EXISTS so this stays safe on a database where the column was already
+-- added by hand to get a blocked environment running again: Flyway then
+-- records the version without failing on a duplicate column.
+ALTER TABLE business_websites ADD COLUMN IF NOT EXISTS theme_config TEXT;
