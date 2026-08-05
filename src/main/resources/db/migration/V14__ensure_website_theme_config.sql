@@ -1,0 +1,15 @@
+-- Guarantees business_websites.theme_config exists, whatever V13's history row
+-- says.
+--
+-- V13 added this column, but an environment was seen where Flyway reported
+-- success and the column was still absent - so V13 was recorded as applied and
+-- will never be retried, while Hibernate's schema validation refuses to start
+-- the app without the column. A migration that has already run cannot be
+-- edited to fix that: Flyway checksums applied migrations, so changing V13
+-- would turn a missing column into a validation failure on every environment
+-- where V13 did apply cleanly.
+--
+-- A new version is the only thing that runs unconditionally. IF NOT EXISTS
+-- makes it a no-op wherever V13 worked, so this is safe to apply everywhere
+-- rather than being a fix targeted at one broken database.
+ALTER TABLE business_websites ADD COLUMN IF NOT EXISTS theme_config TEXT;
