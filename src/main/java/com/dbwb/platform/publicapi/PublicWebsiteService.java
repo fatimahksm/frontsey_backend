@@ -17,6 +17,8 @@ import com.dbwb.platform.profile.repository.OpeningHoursRepository;
 import com.dbwb.platform.publicapi.dto.PublicMenuItem;
 import com.dbwb.platform.publicapi.dto.PublicWebsiteResponse;
 import com.dbwb.platform.theme.ThemeConfigValidator;
+import com.dbwb.platform.portfolio.dto.PortfolioProjectResponse;
+import com.dbwb.platform.portfolio.repository.PortfolioProjectRepository;
 import com.dbwb.platform.theme.dto.ThemeConfig;
 import com.dbwb.platform.website.entity.BusinessWebsite;
 import com.dbwb.platform.website.entity.WebsiteStatus;
@@ -55,6 +57,7 @@ public class PublicWebsiteService {
     private final ServiceItemRepository serviceItemRepository;
     private final PageSectionRepository pageSectionRepository;
     private final ThemeConfigValidator themeConfigValidator;
+    private final PortfolioProjectRepository portfolioProjectRepository;
 
     public PublicWebsiteService(
             BusinessWebsiteRepository websiteRepository,
@@ -71,7 +74,8 @@ public class PublicWebsiteService {
             SeoMetadataRepository seoMetadataRepository,
             ServiceItemRepository serviceItemRepository,
             PageSectionRepository pageSectionRepository,
-            ThemeConfigValidator themeConfigValidator) {
+            ThemeConfigValidator themeConfigValidator,
+            PortfolioProjectRepository portfolioProjectRepository) {
         this.websiteRepository = websiteRepository;
         this.profileRepository = profileRepository;
         this.openingHoursRepository = openingHoursRepository;
@@ -87,6 +91,7 @@ public class PublicWebsiteService {
         this.serviceItemRepository = serviceItemRepository;
         this.pageSectionRepository = pageSectionRepository;
         this.themeConfigValidator = themeConfigValidator;
+        this.portfolioProjectRepository = portfolioProjectRepository;
     }
 
     @Transactional(readOnly = true)
@@ -181,6 +186,13 @@ public class PublicWebsiteService {
                 .map(s -> new PublicWebsiteResponse.PublicPageSection(s.getId().toString(), s.getType(), s.getData()))
                 .toList();
 
+        List<PublicWebsiteResponse.PublicProject> projects = portfolioProjectRepository
+                .findByWebsiteIdOrderBySortOrder(website.getId()).stream()
+                .map(p -> new PublicWebsiteResponse.PublicProject(
+                        p.getId().toString(), p.getName(), p.getDiscipline(), p.getYear(), p.getSummary(),
+                        PortfolioProjectResponse.splitTags(p.getTags()), p.getImageUrl(), p.getLiveUrl(), p.getRepoUrl()))
+                .toList();
+
         // Phase 3: every website has an *effective* theme, whether it picked a preset or is building from
         // scratch - re-validated defensively here since the column is still free-text TEXT at the DB level.
         // The website's own overrides win over the preset it started from, and
@@ -199,7 +211,7 @@ public class PublicWebsiteService {
         return new PublicWebsiteResponse(
                 website.getBusinessName(), website.getSlug(), website.getPageMode(), website.getTemplateType(),
                 website.getEffectiveLayoutVariant(), website.getOrderingMode(), website.getPrimaryLanguage(), website.getCurrency(),
-                content, profile, hours, categories, areas, services, galleryUrls, seo, sections, theme);
+                content, profile, hours, categories, areas, services, galleryUrls, seo, sections, theme, projects);
     }
 
     /** The public-safe, non-trashed items of one category, with their sizes/add-ons/box variants resolved. */
