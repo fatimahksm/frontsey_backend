@@ -39,6 +39,22 @@ public interface AnalyticsEventRepository extends JpaRepository<AnalyticsEvent, 
             """)
     List<KeyCount> visitsByDeviceType(@Param("websiteId") UUID websiteId, @Param("from") Instant from, @Param("to") Instant to);
 
+    /**
+     * Visits per calendar day, for the trend line on the site's own dashboard.
+     *
+     * Grouped in the database rather than by loading every event: a busy site
+     * over a quarter is tens of thousands of rows, and the caller only ever
+     * wants one number per day. The key is an ISO date string so it survives
+     * the projection without a dialect-specific date type.
+     */
+    @Query("""
+            select cast(function('date', e.createdAt) as string) as key, count(e) as total from AnalyticsEvent e
+            where e.websiteId = :websiteId and e.eventType = 'PAGE_VIEW'
+              and e.createdAt between :from and :to
+            group by function('date', e.createdAt) order by function('date', e.createdAt)
+            """)
+    List<KeyCount> visitsByDay(@Param("websiteId") UUID websiteId, @Param("from") Instant from, @Param("to") Instant to);
+
     /** Generic key -> count projection shared by every grouped analytics query above. */
     interface KeyCount {
         String getKey();
