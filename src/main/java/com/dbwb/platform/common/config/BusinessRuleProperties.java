@@ -16,6 +16,9 @@ public class BusinessRuleProperties {
     /** BR-SUB-006: days a subscription stays active after expiry before the site stops. */
     private int subscriptionGracePeriodDays;
 
+    /** Days a website stays publishable on its free trial, opened at first publish. */
+    private int subscriptionTrialDays;
+
     /** BR-AUTH-006: days an account stays disabled (recoverable) before permanent deletion. */
     private int accountDeletionDisableWindowDays;
 
@@ -42,6 +45,14 @@ public class BusinessRuleProperties {
 
     /** BR-MGR-007: days a manager invitation stays PENDING before it auto-expires. */
     private int managerInvitationExpiryDays;
+
+    public int getSubscriptionTrialDays() {
+        return subscriptionTrialDays;
+    }
+
+    public void setSubscriptionTrialDays(int subscriptionTrialDays) {
+        this.subscriptionTrialDays = subscriptionTrialDays;
+    }
 
     public int getSubscriptionGracePeriodDays() {
         return subscriptionGracePeriodDays;

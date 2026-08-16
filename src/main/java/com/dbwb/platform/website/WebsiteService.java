@@ -14,6 +14,7 @@ import com.dbwb.platform.publicapi.PublicWebsiteService;
 import com.dbwb.platform.publicapi.dto.PublicWebsiteResponse;
 import com.dbwb.platform.security.AuthenticatedAccount;
 import com.dbwb.platform.subscription.SubscriptionQueryService;
+import com.dbwb.platform.subscription.SubscriptionService;
 import com.dbwb.platform.theme.ThemeConfigValidator;
 import com.dbwb.platform.theme.entity.Theme;
 import com.dbwb.platform.theme.repository.ThemeRepository;
@@ -51,6 +52,7 @@ public class WebsiteService {
     private final SlugGenerator slugGenerator;
     private final WebsiteAccessGuard accessGuard;
     private final SubscriptionQueryService subscriptionQueryService;
+    private final SubscriptionService subscriptionService;
     private final AuditService auditService;
     private final PublicWebsiteService publicWebsiteService;
     private final ManagerAccessRepository managerAccessRepository;
@@ -66,6 +68,7 @@ public class WebsiteService {
             SlugGenerator slugGenerator,
             WebsiteAccessGuard accessGuard,
             SubscriptionQueryService subscriptionQueryService,
+            SubscriptionService subscriptionService,
             AuditService auditService,
             PublicWebsiteService publicWebsiteService,
             ManagerAccessRepository managerAccessRepository,
@@ -79,6 +82,7 @@ public class WebsiteService {
         this.slugGenerator = slugGenerator;
         this.accessGuard = accessGuard;
         this.subscriptionQueryService = subscriptionQueryService;
+        this.subscriptionService = subscriptionService;
         this.auditService = auditService;
         this.publicWebsiteService = publicWebsiteService;
         this.themeConfigValidator = themeConfigValidator;
@@ -186,7 +190,12 @@ public class WebsiteService {
         BusinessWebsite website = accessGuard.requirePermission(
                 websiteId, caller, com.dbwb.platform.manager.entity.Permission.PUBLISH_WEBSITE);
 
-        if (!subscriptionQueryService.hasPublishableSubscription(websiteId)) {
+        // A website nobody has ever subscribed for gets its free trial here rather
+        // than being turned away. Publishing is the moment the link becomes real,
+        // so it is the moment worth trialling - and it means creating a website
+        // never puts a payment screen in front of somebody who only wants to look.
+        if (!subscriptionQueryService.hasPublishableSubscription(websiteId)
+                && subscriptionService.startTrialIfEligible(website).isEmpty()) {
             throw new BusinessRuleViolationException(
                     "This website cannot be published without an active subscription or valid grace period.");
         }

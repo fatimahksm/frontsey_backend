@@ -15,6 +15,7 @@ import com.dbwb.platform.profile.repository.BusinessProfileRepository;
 import com.dbwb.platform.publicapi.PublicWebsiteService;
 import com.dbwb.platform.security.AuthenticatedAccount;
 import com.dbwb.platform.subscription.SubscriptionQueryService;
+import com.dbwb.platform.subscription.SubscriptionService;
 import com.dbwb.platform.testsupport.TestEntities;
 import com.dbwb.platform.theme.repository.ThemeRepository;
 import com.dbwb.platform.website.entity.BusinessWebsite;
@@ -60,6 +61,7 @@ class WebsiteServiceTest {
     @Mock private SlugGenerator slugGenerator;
     @Mock private WebsiteAccessGuard accessGuard;
     @Mock private SubscriptionQueryService subscriptionQueryService;
+    @Mock private SubscriptionService subscriptionService;
     @Mock private com.dbwb.platform.audit.AuditService auditService;
     @Mock private PublicWebsiteService publicWebsiteService;
     @Mock private ManagerAccessRepository managerAccessRepository;
@@ -75,8 +77,8 @@ class WebsiteServiceTest {
     void setUp() {
         websiteService = new WebsiteService(
                 websiteRepository, themeRepository, accountRepository, profileRepository, categoryRepository,
-                serviceItemRepository, slugGenerator, accessGuard, subscriptionQueryService, auditService,
-                publicWebsiteService, managerAccessRepository, themeConfigValidator);
+                serviceItemRepository, slugGenerator, accessGuard, subscriptionQueryService, subscriptionService,
+                auditService, publicWebsiteService, managerAccessRepository, themeConfigValidator);
 
         website = TestEntities.withId(new BusinessWebsite(), websiteId);
         website.setBusinessName("Test Business");

@@ -25,14 +25,24 @@ public class SubscriptionQueryService {
 
     public boolean hasPublishableSubscription(UUID websiteId) {
         return subscriptionRepository.findByWebsiteId(websiteId)
-                .map(sub -> sub.getStatus() == SubscriptionStatus.ACTIVE || sub.getStatus() == SubscriptionStatus.GRACE)
+                .map(SubscriptionQueryService::isPublishable)
                 .orElse(false);
     }
 
     /** The plan backing the website's current active/grace subscription, if any - used for plan-gated features (BR-AN-001). */
     public Optional<Plan> getActivePlan(UUID websiteId) {
         return subscriptionRepository.findByWebsiteId(websiteId)
-                .filter(sub -> sub.getStatus() == SubscriptionStatus.ACTIVE || sub.getStatus() == SubscriptionStatus.GRACE)
+                .filter(SubscriptionQueryService::isPublishable)
                 .map(com.dbwb.platform.subscription.entity.Subscription::getPlan);
+    }
+
+    /**
+     * The states in which a website is allowed to be publicly visible. A trial
+     * counts: the point of it is that the owner's real link works.
+     */
+    private static boolean isPublishable(com.dbwb.platform.subscription.entity.Subscription sub) {
+        return sub.getStatus() == SubscriptionStatus.ACTIVE
+                || sub.getStatus() == SubscriptionStatus.GRACE
+                || sub.getStatus() == SubscriptionStatus.TRIAL;
     }
 }
