@@ -56,7 +56,7 @@ dbwb:
 
   business-rules:
     subscription-grace-period-days: 3         # BR-SUB-006
-    subscription-trial-days: 7                # free trial opened at first publish
+    subscription-trial-days: 10               # free trial opened at first publish
     account-deletion-disable-window-days: 30  # BR-AUTH-006
     website-trash-retention-days: 30          # BR-DATA-004
     menu-item-trash-retention-days: 7         # BR-MENU-011
