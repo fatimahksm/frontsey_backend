@@ -9,6 +9,11 @@ import com.dbwb.platform.admin.dto.PlanUpdateRequest;
 import com.dbwb.platform.admin.dto.SuspendWebsiteRequest;
 import com.dbwb.platform.admin.dto.ThemeRequest;
 import com.dbwb.platform.admin.dto.UpdateUserRoleRequest;
+import com.dbwb.platform.profile.entity.BusinessProfile;
+import com.dbwb.platform.profile.repository.BusinessProfileRepository;
+import com.dbwb.platform.admin.dto.AdminWebsiteSummaryResponse;
+import com.dbwb.platform.subscription.entity.Subscription;
+import java.util.stream.Collectors;
 import com.dbwb.platform.audit.AuditService;
 import com.dbwb.platform.audit.entity.AuditLog;
 import com.dbwb.platform.audit.repository.AuditLogRepository;
@@ -54,6 +59,7 @@ import java.util.UUID;
 public class AdminService {
 
     private final AccountRepository accountRepository;
+    private final BusinessProfileRepository profileRepository;
     private final BusinessWebsiteRepository websiteRepository;
     private final ThemeRepository themeRepository;
     private final ThemeConfigValidator themeConfigValidator;
@@ -67,6 +73,7 @@ public class AdminService {
 
     public AdminService(
             AccountRepository accountRepository,
+            BusinessProfileRepository profileRepository,
             BusinessWebsiteRepository websiteRepository,
             ThemeRepository themeRepository,
             ThemeConfigValidator themeConfigValidator,
@@ -78,6 +85,7 @@ public class AdminService {
             AuditService auditService,
             AuditLogRepository auditLogRepository) {
         this.accountRepository = accountRepository;
+        this.profileRepository = profileRepository;
         this.websiteRepository = websiteRepository;
         this.themeRepository = themeRepository;
         this.themeConfigValidator = themeConfigValidator;
@@ -102,6 +110,37 @@ public class AdminService {
     public List<BusinessWebsite> listWebsites(AuthenticatedAccount caller) {
         requireSuperAdmin(caller);
         return websiteRepository.findAllWithOwner();
+    }
+
+    /**
+     * The website list an admin can actually act on: each site with its owner,
+     * how to reach them, how many sites they run, and what they are paying for.
+     *
+     * Assembled here rather than in the controller so the per-website lookups
+     * happen once against maps instead of once per row - a platform-wide list
+     * is exactly where an N+1 hurts.
+     */
+    @Transactional(readOnly = true)
+    public List<AdminWebsiteSummaryResponse> listWebsiteSummaries(AuthenticatedAccount caller) {
+        requireSuperAdmin(caller);
+        List<BusinessWebsite> websites = websiteRepository.findAllWithOwner();
+
+        Map<UUID, Long> perOwner = websites.stream()
+                .collect(Collectors.groupingBy(w -> w.getOwner().getId(), Collectors.counting()));
+        Map<UUID, Subscription> subscriptions = subscriptionRepository.findAll().stream()
+                .filter(s -> s.getWebsite() != null)
+                .collect(Collectors.toMap(s -> s.getWebsite().getId(), s -> s, (a, b) -> a));
+        Map<UUID, BusinessProfile> profiles = profileRepository.findAll().stream()
+                .filter(p -> p.getWebsite() != null)
+                .collect(Collectors.toMap(p -> p.getWebsite().getId(), p -> p, (a, b) -> a));
+
+        return websites.stream()
+                .map(w -> AdminWebsiteSummaryResponse.from(
+                        w,
+                        profiles.get(w.getId()),
+                        subscriptions.get(w.getId()),
+                        perOwner.getOrDefault(w.getOwner().getId(), 1L).intValue()))
+                .toList();
     }
 
     @Transactional(readOnly = true)

@@ -4,6 +4,7 @@ import com.dbwb.platform.account.entity.Account;
 import com.dbwb.platform.account.entity.AccountStatus;
 import com.dbwb.platform.account.entity.Role;
 import com.dbwb.platform.account.repository.AccountRepository;
+import com.dbwb.platform.profile.repository.BusinessProfileRepository;
 import com.dbwb.platform.admin.dto.AdminWebsiteUpdateRequest;
 import com.dbwb.platform.admin.dto.UpdateUserRoleRequest;
 import com.dbwb.platform.audit.AuditService;
@@ -43,6 +44,7 @@ import static org.mockito.Mockito.when;
 class AdminServiceTest {
 
     @Mock private AccountRepository accountRepository;
+    @Mock private BusinessProfileRepository profileRepository;
     @Mock private BusinessWebsiteRepository websiteRepository;
     @Mock private ThemeRepository themeRepository;
     @Mock private ThemeConfigValidator themeConfigValidator;
@@ -64,7 +66,8 @@ class AdminServiceTest {
     @BeforeEach
     void setUp() {
         adminService = new AdminService(
-                accountRepository, websiteRepository, themeRepository, themeConfigValidator, planRepository, subscriptionRepository,
+                accountRepository,
+                profileRepository, websiteRepository, themeRepository, themeConfigValidator, planRepository, subscriptionRepository,
                 mockPaymentRepository, supportService, emailService, auditService, auditLogRepository);
     }
 

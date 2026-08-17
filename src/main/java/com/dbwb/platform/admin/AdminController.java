@@ -73,7 +73,7 @@ public class AdminController {
 
     @GetMapping("/websites")
     public ApiResponse<List<AdminWebsiteSummaryResponse>> listWebsites() {
-        return ApiResponse.ok(adminService.listWebsites(currentAccount.get()).stream().map(AdminWebsiteSummaryResponse::from).toList());
+        return ApiResponse.ok(adminService.listWebsiteSummaries(currentAccount.get()));
     }
 
     @PutMapping("/websites/{websiteId}")
