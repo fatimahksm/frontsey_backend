@@ -97,6 +97,54 @@ class SubscriptionTrialTest {
     }
 
     @Test
+    void aMisconfiguredTrialLengthNeverProducesAZeroDayTrial() {
+        // An unset dbwb.business-rules.subscription-trial-days binds to 0, which
+        // made startTrialIfEligible write endDate == startDate: a "trial" that
+        // was already over the moment it began, so the very next maintenance
+        // pass expired it and took the freshly published site offline. The
+        // owner saw "Started Aug 17 - Ends Aug 17 - Expired" and no trial at all.
+        BusinessRuleProperties unset = new BusinessRuleProperties();
+        SubscriptionService misconfigured = new SubscriptionService(subscriptionRepository, mockPaymentRepository,
+                planRepository, accessGuard, unset, emailService, auditService);
+        when(subscriptionRepository.findByWebsiteId(website.getId())).thenReturn(Optional.empty());
+
+        Subscription trial = misconfigured.startTrialIfEligible(website).orElseThrow();
+
+        assertThat(trial.getEndDate()).isAfter(trial.getStartDate());
+        assertThat(trial.getEndDate()).isCloseTo(
+                Instant.now().plus(SubscriptionService.DEFAULT_TRIAL_DAYS, ChronoUnit.DAYS), within(1, ChronoUnit.MINUTES));
+    }
+
+    @Test
+    void aTrialThatNeverActuallyRanIsNotCountedAsUsed() {
+        // Repairs the websites the zero-day bug already burned: their one trial
+        // was spent without a single day of it being served.
+        Subscription burned = subscriptionWith(SubscriptionStatus.EXPIRED);
+        Instant sameInstant = Instant.now().minus(2, ChronoUnit.HOURS);
+        burned.setStartDate(sameInstant);
+        burned.setEndDate(sameInstant);
+        burned.setGraceEndsAt(null);
+        when(subscriptionRepository.findByWebsiteId(website.getId())).thenReturn(Optional.of(burned));
+
+        Subscription reopened = service.startTrialIfEligible(website).orElseThrow();
+
+        assertThat(reopened.getStatus()).isEqualTo(SubscriptionStatus.TRIAL);
+        assertThat(reopened.getEndDate()).isCloseTo(
+                Instant.now().plus(TRIAL_DAYS, ChronoUnit.DAYS), within(1, ChronoUnit.MINUTES));
+    }
+
+    @Test
+    void aTrialThatRanItsCourseStaysUsed() {
+        Subscription spent = subscriptionWith(SubscriptionStatus.EXPIRED);
+        spent.setStartDate(Instant.now().minus(20, ChronoUnit.DAYS));
+        spent.setEndDate(Instant.now().minus(10, ChronoUnit.DAYS));
+        spent.setGraceEndsAt(null);
+        when(subscriptionRepository.findByWebsiteId(website.getId())).thenReturn(Optional.of(spent));
+
+        assertThat(service.startTrialIfEligible(website)).isEmpty();
+    }
+
+    @Test
     void aTrialHasNoGracePeriod() {
         when(subscriptionRepository.findByWebsiteId(website.getId())).thenReturn(Optional.empty());
 

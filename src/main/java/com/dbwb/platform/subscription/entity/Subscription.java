@@ -40,6 +40,29 @@ public class Subscription extends BaseEntity {
     /** BR-SUB-006: computed as endDate + configured grace period days. */
     private Instant graceEndsAt;
 
+    /**
+     * Whether this subscription ever served a single day.
+     *
+     * False for the zero-length trials produced when the configured trial
+     * length was missing (endDate landed on startDate, so the next maintenance
+     * pass expired it immediately). Such a row is not a subscription the owner
+     * has had: it must not count against their one free trial, and it must not
+     * freeze the website the way a plan that genuinely ran out does.
+     *
+     * graceEndsAt is the tell that a payment once succeeded, since
+     * SubscriptionService.resolvePaymentOutcome always sets it - so anything
+     * ever paid for is "has run", whatever its dates say.
+     */
+    public boolean hasEverRun() {
+        if (graceEndsAt != null) {
+            return true;
+        }
+        if (startDate == null || endDate == null) {
+            return true;
+        }
+        return endDate.isAfter(startDate);
+    }
+
     public BusinessWebsite getWebsite() {
         return website;
     }

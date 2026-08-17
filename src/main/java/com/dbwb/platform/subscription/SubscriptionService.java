@@ -38,6 +38,9 @@ import java.util.UUID;
 @Service
 public class SubscriptionService {
 
+    /** Used when the configured trial length is missing or not a positive number. */
+    public static final int DEFAULT_TRIAL_DAYS = 10;
+
     private final SubscriptionRepository subscriptionRepository;
     private final MockPaymentRepository mockPaymentRepository;
     private final PlanRepository planRepository;
@@ -163,7 +166,8 @@ public class SubscriptionService {
      */
     @Transactional
     public Optional<Subscription> startTrialIfEligible(BusinessWebsite website) {
-        if (subscriptionRepository.findByWebsiteId(website.getId()).isPresent()) {
+        Subscription existing = subscriptionRepository.findByWebsiteId(website.getId()).orElse(null);
+        if (existing != null && existing.hasEverRun()) {
             return Optional.empty();
         }
 
@@ -171,21 +175,35 @@ public class SubscriptionService {
                 .orElseThrow(() -> new ResourceNotFoundException("No BASIC plan configured to base a trial on."));
 
         Instant now = Instant.now();
-        Subscription trial = new Subscription();
+        Subscription trial = existing != null ? existing : new Subscription();
         trial.setWebsite(website);
         trial.setPlan(plan);
         trial.setStatus(SubscriptionStatus.TRIAL);
         trial.setStartDate(now);
-        trial.setEndDate(now.plus(businessRules.getSubscriptionTrialDays(), ChronoUnit.DAYS));
+        trial.setEndDate(now.plus(trialDays(), ChronoUnit.DAYS));
         // Deliberately no graceEndsAt: a trial ends on its end date, full stop.
         trial.setGraceEndsAt(null);
         subscriptionRepository.save(trial);
 
         emailService.send(website.getOwner().getEmail(), "Your free trial has started",
-                "Your website is live for the next " + businessRules.getSubscriptionTrialDays()
+                "Your website is live for the next " + trialDays()
                         + " days. Subscribe before it ends to keep it online.");
         auditService.record(website.getOwner().getId(), "SUBSCRIPTION_TRIAL_STARTED", website.getId().toString());
         return Optional.of(trial);
+    }
+
+    /**
+     * The trial length, never zero.
+     *
+     * An unset dbwb.business-rules.subscription-trial-days binds to 0, and a
+     * zero-day trial is worse than no trial: endDate lands on startDate, so the
+     * next maintenance pass expires it and takes the site that was just
+     * published straight back offline. A missing or nonsensical setting must
+     * degrade to a real trial, not to an instant outage.
+     */
+    private int trialDays() {
+        int configured = businessRules.getSubscriptionTrialDays();
+        return configured > 0 ? configured : DEFAULT_TRIAL_DAYS;
     }
 
     @Transactional(readOnly = true)
