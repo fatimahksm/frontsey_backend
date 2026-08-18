@@ -6,6 +6,9 @@ import com.dbwb.platform.common.exception.BusinessRuleViolationException;
 import com.dbwb.platform.common.exception.ResourceNotFoundException;
 import com.dbwb.platform.notification.EmailService;
 import com.dbwb.platform.plan.entity.BillingPeriod;
+import com.dbwb.platform.plan.entity.TemplatePrice;
+import com.dbwb.platform.plan.repository.TemplatePriceRepository;
+import java.math.BigDecimal;
 import com.dbwb.platform.plan.entity.Plan;
 import com.dbwb.platform.plan.entity.PlanCode;
 import com.dbwb.platform.plan.repository.PlanRepository;
@@ -44,6 +47,7 @@ public class SubscriptionService {
     private final SubscriptionRepository subscriptionRepository;
     private final MockPaymentRepository mockPaymentRepository;
     private final PlanRepository planRepository;
+    private final TemplatePriceRepository templatePriceRepository;
     private final WebsiteAccessGuard accessGuard;
     private final BusinessRuleProperties businessRules;
     private final EmailService emailService;
@@ -53,6 +57,7 @@ public class SubscriptionService {
             SubscriptionRepository subscriptionRepository,
             MockPaymentRepository mockPaymentRepository,
             PlanRepository planRepository,
+            TemplatePriceRepository templatePriceRepository,
             WebsiteAccessGuard accessGuard,
             BusinessRuleProperties businessRules,
             EmailService emailService,
@@ -60,6 +65,7 @@ public class SubscriptionService {
         this.subscriptionRepository = subscriptionRepository;
         this.mockPaymentRepository = mockPaymentRepository;
         this.planRepository = planRepository;
+        this.templatePriceRepository = templatePriceRepository;
         this.accessGuard = accessGuard;
         this.businessRules = businessRules;
         this.emailService = emailService;
@@ -71,20 +77,32 @@ public class SubscriptionService {
     public MockPayment checkout(UUID websiteId, AuthenticatedAccount caller, CheckoutRequest request) {
         BusinessWebsite website = accessGuard.requireOwner(websiteId, caller);
 
-        Plan plan = planRepository.findByCodeAndBillingPeriod(request.planCode(), request.billingPeriod())
+        // What this website costs is decided by its template, not by a tier the
+        // owner picks - they choose a template, then monthly or yearly. The
+        // template also names which plan's limits the website gets, which is the
+        // one place pricing and entitlement meet.
+        TemplatePrice pricing = templatePriceRepository
+                .findByLayoutVariant(website.getEffectiveLayoutVariant())
+                .filter(TemplatePrice::isActive)
+                .orElseThrow(() -> new ResourceNotFoundException(
+                        "This template has no price set. Ask support to price it before subscribing."));
+
+        Plan plan = planRepository.findByCodeAndBillingPeriod(pricing.getPlanCode(), request.billingPeriod())
                 .orElseThrow(() -> new ResourceNotFoundException("Plan not found."));
+        BigDecimal amount = pricing.priceFor(request.billingPeriod());
 
         Subscription subscription = subscriptionRepository.findByWebsiteId(websiteId).orElseGet(Subscription::new);
 
-        // BR-SUB-010: plan change only permitted once the current subscription has ended.
-        // A trial is deliberately not "still active" here: its whole purpose is to be
-        // converted into a paid plan of the owner's choosing, at any point during it.
+        // BR-SUB-010, now read as the billing period rather than the tier: while a
+        // paid subscription runs, the only thing you can do is renew the one you
+        // have. A trial is deliberately not "still active" - its whole purpose is
+        // to be converted, at any point during it.
         boolean stillActive = subscription.getStatus() == SubscriptionStatus.ACTIVE
                 || subscription.getStatus() == SubscriptionStatus.GRACE;
         if (subscription.getId() != null && stillActive && subscription.getPlan() != null
-                && subscription.getPlan().getCode() != plan.getCode()) {
+                && subscription.getPlan().getBillingPeriod() != request.billingPeriod()) {
             throw new BusinessRuleViolationException(
-                    "The plan can only be changed after the current subscription ends.");
+                    "Monthly and yearly can only be switched once the current subscription ends.");
         }
 
         // A trial that is still running stays running until the payment lands.
@@ -101,7 +119,9 @@ public class SubscriptionService {
 
         MockPayment payment = new MockPayment();
         payment.setSubscription(subscription);
-        payment.setAmount(plan.getPrice());
+        // The template's price, not the plan's list price - the plan here carries
+        // the limits, and its own price column is what a tier would have cost.
+        payment.setAmount(amount);
         payment.setStatus(MockPaymentStatus.PENDING);
         payment.setReference("MOCK-WHISH-" + UUID.randomUUID().toString().substring(0, 8).toUpperCase());
         return mockPaymentRepository.save(payment);

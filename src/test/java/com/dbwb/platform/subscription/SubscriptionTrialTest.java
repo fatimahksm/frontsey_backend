@@ -8,6 +8,7 @@ import com.dbwb.platform.plan.entity.BillingPeriod;
 import com.dbwb.platform.plan.entity.Plan;
 import com.dbwb.platform.plan.entity.PlanCode;
 import com.dbwb.platform.plan.repository.PlanRepository;
+import com.dbwb.platform.plan.repository.TemplatePriceRepository;
 import com.dbwb.platform.subscription.entity.MockPayment;
 import com.dbwb.platform.subscription.entity.MockPaymentStatus;
 import com.dbwb.platform.subscription.entity.Subscription;
@@ -49,6 +50,7 @@ class SubscriptionTrialTest {
     @Mock private SubscriptionRepository subscriptionRepository;
     @Mock private MockPaymentRepository mockPaymentRepository;
     @Mock private PlanRepository planRepository;
+    @Mock private TemplatePriceRepository templatePriceRepository;
     @Mock private WebsiteAccessGuard accessGuard;
     @Mock private EmailService emailService;
     @Mock private AuditService auditService;
@@ -64,7 +66,7 @@ class SubscriptionTrialTest {
         rules.setSubscriptionTrialDays(TRIAL_DAYS);
         rules.setSubscriptionGracePeriodDays(3);
 
-        service = new SubscriptionService(subscriptionRepository, mockPaymentRepository, planRepository,
+        service = new SubscriptionService(subscriptionRepository, mockPaymentRepository, planRepository, templatePriceRepository,
                 accessGuard, rules, emailService, auditService);
         queryService = new SubscriptionQueryService(subscriptionRepository);
 
@@ -105,7 +107,7 @@ class SubscriptionTrialTest {
         // owner saw "Started Aug 17 - Ends Aug 17 - Expired" and no trial at all.
         BusinessRuleProperties unset = new BusinessRuleProperties();
         SubscriptionService misconfigured = new SubscriptionService(subscriptionRepository, mockPaymentRepository,
-                planRepository, accessGuard, unset, emailService, auditService);
+                planRepository, templatePriceRepository, accessGuard, unset, emailService, auditService);
         when(subscriptionRepository.findByWebsiteId(website.getId())).thenReturn(Optional.empty());
 
         Subscription trial = misconfigured.startTrialIfEligible(website).orElseThrow();

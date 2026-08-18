@@ -18,6 +18,7 @@ import com.dbwb.platform.plan.entity.BillingPeriod;
 import com.dbwb.platform.plan.entity.Plan;
 import com.dbwb.platform.plan.entity.PlanCode;
 import com.dbwb.platform.plan.repository.PlanRepository;
+import com.dbwb.platform.plan.repository.TemplatePriceRepository;
 import com.dbwb.platform.profile.repository.BusinessProfileRepository;
 import com.dbwb.platform.security.AuthenticatedAccount;
 import com.dbwb.platform.subscription.entity.Subscription;
@@ -73,6 +74,7 @@ class AdminProvisioningTest {
     @Mock private ThemeRepository themeRepository;
     @Mock private ThemeConfigValidator themeConfigValidator;
     @Mock private PlanRepository planRepository;
+    @Mock private TemplatePriceRepository templatePriceRepository;
     @Mock private SubscriptionRepository subscriptionRepository;
     @Mock private MockPaymentRepository mockPaymentRepository;
     @Mock private SupportService supportService;
@@ -92,7 +94,7 @@ class AdminProvisioningTest {
         adminService = new AdminService(
                 accountRepository, tokenRepository, passwordEncoder, slugGenerator,
                 new BusinessRuleProperties(), new FrontendProperties(), profileRepository,
-                websiteRepository, themeRepository, themeConfigValidator, planRepository,
+                websiteRepository, themeRepository, themeConfigValidator, planRepository, templatePriceRepository,
                 subscriptionRepository, mockPaymentRepository, supportService, emailService,
                 auditService, auditLogRepository);
 

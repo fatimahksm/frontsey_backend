@@ -36,6 +36,10 @@ import com.dbwb.platform.account.repository.AccountTokenRepository;
 import com.dbwb.platform.common.config.BusinessRuleProperties;
 import com.dbwb.platform.common.config.FrontendProperties;
 import org.springframework.security.crypto.password.PasswordEncoder;
+import com.dbwb.platform.plan.dto.TemplatePriceResponse;
+import com.dbwb.platform.plan.dto.TemplatePriceUpdateRequest;
+import com.dbwb.platform.plan.entity.TemplatePrice;
+import com.dbwb.platform.plan.repository.TemplatePriceRepository;
 import com.dbwb.platform.audit.AuditService;
 import com.dbwb.platform.audit.entity.AuditLog;
 import com.dbwb.platform.audit.repository.AuditLogRepository;
@@ -91,6 +95,7 @@ public class AdminService {
     private final ThemeRepository themeRepository;
     private final ThemeConfigValidator themeConfigValidator;
     private final PlanRepository planRepository;
+    private final TemplatePriceRepository templatePriceRepository;
     private final SubscriptionRepository subscriptionRepository;
     private final MockPaymentRepository mockPaymentRepository;
     private final SupportService supportService;
@@ -110,6 +115,7 @@ public class AdminService {
             ThemeRepository themeRepository,
             ThemeConfigValidator themeConfigValidator,
             PlanRepository planRepository,
+            TemplatePriceRepository templatePriceRepository,
             SubscriptionRepository subscriptionRepository,
             MockPaymentRepository mockPaymentRepository,
             SupportService supportService,
@@ -127,6 +133,7 @@ public class AdminService {
         this.themeRepository = themeRepository;
         this.themeConfigValidator = themeConfigValidator;
         this.planRepository = planRepository;
+        this.templatePriceRepository = templatePriceRepository;
         this.subscriptionRepository = subscriptionRepository;
         this.mockPaymentRepository = mockPaymentRepository;
         this.supportService = supportService;
@@ -254,6 +261,46 @@ public class AdminService {
         emailService.send(owner.getEmail(), "Your website is ready",
                 "A website has been set up for you: \"" + businessName + "\". "
                         + "Choose a password to sign in: " + frontendBaseUrl + "/reset-password?token=" + token.getToken());
+    }
+
+    /** Every template's price, for the pricing screen. */
+    @Transactional(readOnly = true)
+    public List<TemplatePriceResponse> listTemplatePrices(AuthenticatedAccount caller) {
+        requireSuperAdmin(caller);
+        return templatePriceRepository.findAllByOrderByLayoutVariantAsc().stream()
+                .map(TemplatePriceResponse::from)
+                .toList();
+    }
+
+    /**
+     * Reprices one template.
+     *
+     * Existing subscriptions are untouched on purpose: somebody who has already
+     * paid keeps what they paid for until it ends, and the new price applies at
+     * their next checkout. Repricing is not a way to charge people retroactively.
+     */
+    @Transactional
+    public TemplatePriceResponse updateTemplatePrice(
+            AuthenticatedAccount caller, LayoutVariant layoutVariant, TemplatePriceUpdateRequest request) {
+        requireSuperAdmin(caller);
+
+        if (request.yearlyPrice().compareTo(request.monthlyPrice()) < 0) {
+            throw new BusinessRuleViolationException(
+                    "The yearly price is lower than the monthly one. Check the figures before saving.");
+        }
+        if (planRepository.findByCodeAndBillingPeriod(request.planCode(), BillingPeriod.MONTHLY).isEmpty()) {
+            throw new ResourceNotFoundException("That plan does not exist, so its limits cannot be granted.");
+        }
+
+        TemplatePrice price = templatePriceRepository.findByLayoutVariant(layoutVariant)
+                .orElseThrow(() -> new ResourceNotFoundException("That template has no price row."));
+        price.setMonthlyPrice(request.monthlyPrice());
+        price.setYearlyPrice(request.yearlyPrice());
+        price.setPlanCode(request.planCode());
+        price.setActive(request.active());
+
+        auditService.record(caller.accountId(), "TEMPLATE_PRICE_UPDATED", layoutVariant.name());
+        return TemplatePriceResponse.from(price);
     }
 
     /** How many days of history the platform report covers by default. */

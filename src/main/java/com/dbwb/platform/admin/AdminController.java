@@ -5,6 +5,9 @@ import com.dbwb.platform.admin.dto.AdminDashboardResponse;
 import com.dbwb.platform.admin.dto.AdminPlatformReportResponse;
 import com.dbwb.platform.admin.dto.ProvisionWebsiteRequest;
 import com.dbwb.platform.admin.dto.ProvisionedWebsiteResponse;
+import com.dbwb.platform.plan.dto.TemplatePriceResponse;
+import com.dbwb.platform.plan.dto.TemplatePriceUpdateRequest;
+import com.dbwb.platform.website.entity.LayoutVariant;
 import com.dbwb.platform.admin.dto.AdminWebsiteSummaryResponse;
 import com.dbwb.platform.admin.dto.AdminWebsiteUpdateRequest;
 import com.dbwb.platform.admin.dto.AuditLogResponse;
@@ -93,6 +96,20 @@ public class AdminController {
         return ApiResponse.ok(provisioned, provisioned.ownerAccountCreated()
                 ? "Website created and the owner has been invited to set a password."
                 : "Website created on that owner's existing account.");
+    }
+
+    /** Every template's price, monthly and yearly. */
+    @GetMapping("/template-prices")
+    public ApiResponse<List<TemplatePriceResponse>> listTemplatePrices() {
+        return ApiResponse.ok(adminService.listTemplatePrices(currentAccount.get()));
+    }
+
+    /** Reprice one template. Existing subscriptions keep what they paid for. */
+    @PutMapping("/template-prices/{layoutVariant}")
+    public ApiResponse<TemplatePriceResponse> updateTemplatePrice(
+            @PathVariable LayoutVariant layoutVariant, @Valid @RequestBody TemplatePriceUpdateRequest request) {
+        return ApiResponse.ok(adminService.updateTemplatePrice(currentAccount.get(), layoutVariant, request),
+                "Price updated. It applies from the next checkout.");
     }
 
     @GetMapping("/websites")

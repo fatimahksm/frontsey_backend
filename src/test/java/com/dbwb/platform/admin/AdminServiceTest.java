@@ -19,6 +19,7 @@ import com.dbwb.platform.common.exception.AccessDeniedForTenantException;
 import com.dbwb.platform.common.exception.BusinessRuleViolationException;
 import com.dbwb.platform.notification.EmailService;
 import com.dbwb.platform.plan.repository.PlanRepository;
+import com.dbwb.platform.plan.repository.TemplatePriceRepository;
 import com.dbwb.platform.security.AuthenticatedAccount;
 import com.dbwb.platform.subscription.repository.MockPaymentRepository;
 import com.dbwb.platform.subscription.repository.SubscriptionRepository;
@@ -57,6 +58,7 @@ class AdminServiceTest {
     @Mock private ThemeRepository themeRepository;
     @Mock private ThemeConfigValidator themeConfigValidator;
     @Mock private PlanRepository planRepository;
+    @Mock private TemplatePriceRepository templatePriceRepository;
     @Mock private SubscriptionRepository subscriptionRepository;
     @Mock private MockPaymentRepository mockPaymentRepository;
     @Mock private SupportService supportService;
@@ -77,7 +79,7 @@ class AdminServiceTest {
                 accountRepository,
                 tokenRepository, passwordEncoder, slugGenerator,
                 new BusinessRuleProperties(), new FrontendProperties(),
-                profileRepository, websiteRepository, themeRepository, themeConfigValidator, planRepository, subscriptionRepository,
+                profileRepository, websiteRepository, themeRepository, themeConfigValidator, planRepository, templatePriceRepository, subscriptionRepository,
                 mockPaymentRepository, supportService, emailService, auditService, auditLogRepository);
     }
 
