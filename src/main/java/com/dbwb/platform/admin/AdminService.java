@@ -14,6 +14,15 @@ import com.dbwb.platform.profile.repository.BusinessProfileRepository;
 import com.dbwb.platform.admin.dto.AdminWebsiteSummaryResponse;
 import com.dbwb.platform.subscription.entity.Subscription;
 import java.util.stream.Collectors;
+import com.dbwb.platform.admin.dto.AdminPlatformReportResponse;
+import com.dbwb.platform.subscription.entity.MockPayment;
+import com.dbwb.platform.website.entity.LayoutVariant;
+import java.math.BigDecimal;
+import java.time.LocalDate;
+import java.time.ZoneOffset;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.Comparator;
 import com.dbwb.platform.audit.AuditService;
 import com.dbwb.platform.audit.entity.AuditLog;
 import com.dbwb.platform.audit.repository.AuditLogRepository;
@@ -110,6 +119,129 @@ public class AdminService {
     public List<BusinessWebsite> listWebsites(AuthenticatedAccount caller) {
         requireSuperAdmin(caller);
         return websiteRepository.findAllWithOwner();
+    }
+
+    /** How many days of history the platform report covers by default. */
+    private static final int REPORT_DAYS = 30;
+    /** Guard: a caller-supplied window is clamped so one request cannot ask for years of series. */
+    private static final int MAX_REPORT_DAYS = 365;
+
+    /**
+     * The platform report: what is happening, not just how big things are.
+     *
+     * Counted in memory from rows that already exist rather than through a
+     * dozen aggregate queries. At this scale that is the simpler, more readable
+     * choice, and it keeps every figure derived from the same snapshot - a
+     * report whose halves disagree because they were queried seconds apart is
+     * worse than one that takes a moment longer.
+     */
+    @Transactional(readOnly = true)
+    public AdminPlatformReportResponse getPlatformReport(AuthenticatedAccount caller, Integer requestedDays) {
+        requireSuperAdmin(caller);
+        int days = Math.min(Math.max(requestedDays == null ? REPORT_DAYS : requestedDays, 1), MAX_REPORT_DAYS);
+        LocalDate today = LocalDate.now(ZoneOffset.UTC);
+        LocalDate from = today.minusDays(days - 1L);
+
+        List<BusinessWebsite> websites = websiteRepository.findAll();
+        List<Subscription> subscriptions = subscriptionRepository.findAll();
+        List<MockPayment> payments = mockPaymentRepository.findAll();
+
+        // --- which templates people actually choose ---
+        Map<LayoutVariant, List<BusinessWebsite>> byVariant = websites.stream()
+                .filter(w -> w.getEffectiveLayoutVariant() != null)
+                .collect(Collectors.groupingBy(BusinessWebsite::getEffectiveLayoutVariant));
+        List<AdminPlatformReportResponse.TemplateUsage> templates = Arrays.stream(LayoutVariant.values())
+                .map(variant -> {
+                    List<BusinessWebsite> group = byVariant.getOrDefault(variant, List.of());
+                    long published = group.stream().filter(w -> w.getPublishedAt() != null).count();
+                    return new AdminPlatformReportResponse.TemplateUsage(
+                            variant.name(), variant.templateType().name(), group.size(), published);
+                })
+                .toList();
+
+        // --- daily series, gap-filled so a quiet day is a zero rather than a hole ---
+        List<AdminPlatformReportResponse.DailyCount> signups = countByDay(
+                accountRepository.findAll().stream().map(a -> dayOf(a.getCreatedAt())), from, today);
+        List<AdminPlatformReportResponse.DailyCount> created = countByDay(
+                websites.stream().map(w -> dayOf(w.getCreatedAt())), from, today);
+        List<AdminPlatformReportResponse.DailyCount> published = countByDay(
+                websites.stream().filter(w -> w.getPublishedAt() != null).map(w -> dayOf(w.getPublishedAt())), from, today);
+
+        List<MockPayment> paid = payments.stream()
+                .filter(p -> p.getStatus() == MockPaymentStatus.SUCCESS)
+                .toList();
+        Map<LocalDate, BigDecimal> takings = paid.stream().collect(Collectors.groupingBy(
+                p -> dayOf(p.getCreatedAt()),
+                Collectors.reducing(BigDecimal.ZERO, MockPayment::getAmount, BigDecimal::add)));
+        List<AdminPlatformReportResponse.DailyAmount> revenue = new ArrayList<>();
+        for (LocalDate d = from; !d.isAfter(today); d = d.plusDays(1)) {
+            revenue.add(new AdminPlatformReportResponse.DailyAmount(d, takings.getOrDefault(d, BigDecimal.ZERO)));
+        }
+
+        // --- the subscription mix as it stands ---
+        Map<SubscriptionStatus, Long> statusCounts = subscriptions.stream()
+                .collect(Collectors.groupingBy(Subscription::getStatus, Collectors.counting()));
+        List<AdminPlatformReportResponse.StatusCount> byStatus = Arrays.stream(SubscriptionStatus.values())
+                .map(status -> new AdminPlatformReportResponse.StatusCount(
+                        status.name(), statusCounts.getOrDefault(status, 0L)))
+                .toList();
+
+        // --- where the money comes from ---
+        Map<String, List<MockPayment>> byPlan = paid.stream()
+                .filter(p -> p.getSubscription() != null && p.getSubscription().getPlan() != null)
+                .collect(Collectors.groupingBy(p -> p.getSubscription().getPlan().getCode().name()
+                        + "|" + p.getSubscription().getPlan().getBillingPeriod().name()));
+        List<AdminPlatformReportResponse.PlanRevenue> revenueByPlan = byPlan.entrySet().stream()
+                .map(entry -> {
+                    String[] parts = entry.getKey().split("\\|");
+                    BigDecimal total = entry.getValue().stream()
+                            .map(MockPayment::getAmount).reduce(BigDecimal.ZERO, BigDecimal::add);
+                    return new AdminPlatformReportResponse.PlanRevenue(
+                            parts[0], parts[1], entry.getValue().size(), total);
+                })
+                .sorted(Comparator.comparing(AdminPlatformReportResponse.PlanRevenue::revenue).reversed())
+                .toList();
+
+        // --- a first payment, or a renewal ---
+        // The first successful payment on a subscription is somebody starting;
+        // every later one is somebody choosing to stay, which is the number that
+        // actually says whether this is working.
+        long renewals = 0;
+        long firstPayments = 0;
+        Map<UUID, List<MockPayment>> paidBySubscription = paid.stream()
+                .filter(p -> p.getSubscription() != null)
+                .collect(Collectors.groupingBy(p -> p.getSubscription().getId()));
+        for (List<MockPayment> forOne : paidBySubscription.values()) {
+            firstPayments += 1;
+            renewals += Math.max(0, forOne.size() - 1);
+        }
+
+        long onFreeTrial = statusCounts.getOrDefault(SubscriptionStatus.TRIAL, 0L);
+        // A trial that ended and was never paid for: expired, never had a grace
+        // period (only paid plans get one), and no successful payment behind it.
+        long trialsLapsed = subscriptions.stream()
+                .filter(sub -> sub.getStatus() == SubscriptionStatus.EXPIRED)
+                .filter(sub -> sub.getGraceEndsAt() == null)
+                .filter(sub -> !paidBySubscription.containsKey(sub.getId()))
+                .count();
+
+        return new AdminPlatformReportResponse(days, templates, signups, created, published, revenue,
+                byStatus, revenueByPlan, firstPayments, renewals, onFreeTrial, trialsLapsed);
+    }
+
+    private static LocalDate dayOf(Instant instant) {
+        return instant == null ? LocalDate.EPOCH : instant.atZone(ZoneOffset.UTC).toLocalDate();
+    }
+
+    /** A gap-filled daily count, so the series has one point per day whether anything happened or not. */
+    private static List<AdminPlatformReportResponse.DailyCount> countByDay(
+            java.util.stream.Stream<LocalDate> dates, LocalDate from, LocalDate to) {
+        Map<LocalDate, Long> counts = dates.collect(Collectors.groupingBy(d -> d, Collectors.counting()));
+        List<AdminPlatformReportResponse.DailyCount> out = new ArrayList<>();
+        for (LocalDate d = from; !d.isAfter(to); d = d.plusDays(1)) {
+            out.add(new AdminPlatformReportResponse.DailyCount(d, counts.getOrDefault(d, 0L)));
+        }
+        return out;
     }
 
     /**

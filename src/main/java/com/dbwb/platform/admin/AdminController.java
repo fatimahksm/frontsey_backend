@@ -2,6 +2,7 @@ package com.dbwb.platform.admin;
 
 import com.dbwb.platform.admin.dto.AccountSummaryResponse;
 import com.dbwb.platform.admin.dto.AdminDashboardResponse;
+import com.dbwb.platform.admin.dto.AdminPlatformReportResponse;
 import com.dbwb.platform.admin.dto.AdminWebsiteSummaryResponse;
 import com.dbwb.platform.admin.dto.AdminWebsiteUpdateRequest;
 import com.dbwb.platform.admin.dto.AuditLogResponse;
@@ -69,6 +70,15 @@ public class AdminController {
     public ApiResponse<AccountSummaryResponse> reactivateUser(@PathVariable UUID accountId) {
         var account = adminService.reactivateUser(accountId, currentAccount.get());
         return ApiResponse.ok(AccountSummaryResponse.from(account), "Account reactivated.");
+    }
+
+    /**
+     * The platform report - templates chosen, signups, publishes, takings, and
+     * new payments against renewals. `days` clamps server-side.
+     */
+    @GetMapping("/report")
+    public ApiResponse<AdminPlatformReportResponse> report(@RequestParam(required = false) Integer days) {
+        return ApiResponse.ok(adminService.getPlatformReport(currentAccount.get(), days));
     }
 
     @GetMapping("/websites")
