@@ -23,6 +23,19 @@ import java.time.ZoneOffset;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Comparator;
+import com.dbwb.platform.admin.dto.ProvisionWebsiteRequest;
+import com.dbwb.platform.admin.dto.ProvisionedWebsiteResponse;
+import com.dbwb.platform.account.entity.AccountToken;
+import com.dbwb.platform.account.entity.TokenType;
+import com.dbwb.platform.plan.entity.BillingPeriod;
+import com.dbwb.platform.plan.entity.PlanCode;
+import com.dbwb.platform.website.entity.PageMode;
+import com.dbwb.platform.website.entity.TemplateType;
+import com.dbwb.platform.website.SlugGenerator;
+import com.dbwb.platform.account.repository.AccountTokenRepository;
+import com.dbwb.platform.common.config.BusinessRuleProperties;
+import com.dbwb.platform.common.config.FrontendProperties;
+import org.springframework.security.crypto.password.PasswordEncoder;
 import com.dbwb.platform.audit.AuditService;
 import com.dbwb.platform.audit.entity.AuditLog;
 import com.dbwb.platform.audit.repository.AuditLogRepository;
@@ -68,6 +81,11 @@ import java.util.UUID;
 public class AdminService {
 
     private final AccountRepository accountRepository;
+    private final AccountTokenRepository tokenRepository;
+    private final PasswordEncoder passwordEncoder;
+    private final SlugGenerator slugGenerator;
+    private final BusinessRuleProperties businessRules;
+    private final String frontendBaseUrl;
     private final BusinessProfileRepository profileRepository;
     private final BusinessWebsiteRepository websiteRepository;
     private final ThemeRepository themeRepository;
@@ -82,6 +100,11 @@ public class AdminService {
 
     public AdminService(
             AccountRepository accountRepository,
+            AccountTokenRepository tokenRepository,
+            PasswordEncoder passwordEncoder,
+            SlugGenerator slugGenerator,
+            BusinessRuleProperties businessRules,
+            FrontendProperties frontendProperties,
             BusinessProfileRepository profileRepository,
             BusinessWebsiteRepository websiteRepository,
             ThemeRepository themeRepository,
@@ -94,6 +117,11 @@ public class AdminService {
             AuditService auditService,
             AuditLogRepository auditLogRepository) {
         this.accountRepository = accountRepository;
+        this.tokenRepository = tokenRepository;
+        this.passwordEncoder = passwordEncoder;
+        this.slugGenerator = slugGenerator;
+        this.businessRules = businessRules;
+        this.frontendBaseUrl = frontendProperties.getPublicSiteBaseUrl();
         this.profileRepository = profileRepository;
         this.websiteRepository = websiteRepository;
         this.themeRepository = themeRepository;
@@ -119,6 +147,113 @@ public class AdminService {
     public List<BusinessWebsite> listWebsites(AuthenticatedAccount caller) {
         requireSuperAdmin(caller);
         return websiteRepository.findAllWithOwner();
+    }
+
+    /**
+     * Stands a website up on an owner's behalf.
+     *
+     * The owner is named by email because the point is that they may not have
+     * an account yet. If they do, it is reused - never a second account for the
+     * same person. If they do not, one is created and they are invited to set
+     * their own password: the admin picks a throwaway that is immediately
+     * unusable, never chooses the real one, and never sees it. Completing that
+     * invitation both sets the password and verifies the address, so the owner
+     * signs in once rather than chasing two emails.
+     *
+     * `complimentary` grants free access outright rather than faking a payment:
+     * an ACTIVE subscription with no end date, so the site publishes, never
+     * expires, and is never billed.
+     */
+    @Transactional
+    public ProvisionedWebsiteResponse provisionWebsiteForOwner(
+            AuthenticatedAccount caller, ProvisionWebsiteRequest request) {
+        requireSuperAdmin(caller);
+
+        String email = request.ownerEmail().trim();
+        Account owner = accountRepository.findByEmailIgnoreCase(email).orElse(null);
+        boolean created = owner == null;
+
+        if (created) {
+            owner = new Account();
+            owner.setEmail(email);
+            // Deliberately unusable: the owner sets their own through the
+            // invitation, and nobody - including this admin - ever knows this one.
+            owner.setPasswordHash(passwordEncoder.encode(UUID.randomUUID().toString()));
+            owner.setFullName(request.ownerFullName() == null || request.ownerFullName().isBlank()
+                    ? null : request.ownerFullName().trim());
+            owner.setRole(Role.BUSINESS_OWNER);
+            owner.setStatus(AccountStatus.PENDING_VERIFICATION);
+            accountRepository.save(owner);
+        } else if (owner.getStatus() == AccountStatus.DELETED) {
+            throw new BusinessRuleViolationException(
+                    "That account has been deleted. Use a different email address.");
+        }
+
+        TemplateType templateType = request.templateType();
+        LayoutVariant layoutVariant = request.layoutVariant() != null
+                ? request.layoutVariant() : LayoutVariant.defaultFor(templateType);
+        if (layoutVariant.templateType() != templateType) {
+            throw new BusinessRuleViolationException(
+                    "That template does not belong to the chosen kind of website.");
+        }
+
+        BusinessWebsite website = new BusinessWebsite();
+        website.setOwner(owner);
+        website.setBusinessName(request.businessName().trim());
+        website.setSlug(slugGenerator.generateUniqueSlug(request.businessName().trim()));
+        website.setPageMode(request.pageMode() != null ? request.pageMode() : PageMode.ONE_PAGE);
+        website.setTemplateType(templateType);
+        website.setLayoutVariant(layoutVariant);
+        website.setStatus(WebsiteStatus.DRAFT);
+        websiteRepository.save(website);
+
+        if (request.complimentary()) {
+            Plan plan = planRepository.findByCodeAndBillingPeriod(PlanCode.BASIC, BillingPeriod.MONTHLY)
+                    .orElseThrow(() -> new ResourceNotFoundException("No BASIC plan configured to base free access on."));
+            Subscription free = new Subscription();
+            free.setWebsite(website);
+            free.setPlan(plan);
+            free.setStatus(SubscriptionStatus.ACTIVE);
+            free.setStartDate(Instant.now());
+            // No end date and no grace: nothing to expire, nothing to chase.
+            free.setEndDate(null);
+            free.setGraceEndsAt(null);
+            free.setComplimentary(true);
+            subscriptionRepository.save(free);
+        }
+
+        auditService.record(caller.accountId(), "WEBSITE_PROVISIONED_FOR_OWNER", website.getId().toString());
+
+        if (created) {
+            inviteOwnerToSetPassword(owner, website.getBusinessName());
+        } else {
+            emailService.send(owner.getEmail(), "A website was set up for you",
+                    "\"" + website.getBusinessName() + "\" is now on your account. Sign in to finish setting it up.");
+        }
+
+        return new ProvisionedWebsiteResponse(website.getId(), website.getBusinessName(), website.getSlug(),
+                owner.getId(), owner.getEmail(), created, request.complimentary());
+    }
+
+    /**
+     * Invites a newly created owner to choose their password.
+     *
+     * Reuses the password-reset token rather than inventing a second kind: the
+     * link does the same job - prove you hold this mailbox, then set a password -
+     * and completing it verifies the address too, so there is nothing else for
+     * the owner to do before signing in.
+     */
+    private void inviteOwnerToSetPassword(Account owner, String businessName) {
+        AccountToken token = new AccountToken();
+        token.setAccount(owner);
+        token.setType(TokenType.PASSWORD_RESET);
+        token.setToken(UUID.randomUUID().toString());
+        token.setExpiresAt(Instant.now().plus(businessRules.getEmailVerificationTokenTtlHours(), ChronoUnit.HOURS));
+        tokenRepository.save(token);
+
+        emailService.send(owner.getEmail(), "Your website is ready",
+                "A website has been set up for you: \"" + businessName + "\". "
+                        + "Choose a password to sign in: " + frontendBaseUrl + "/reset-password?token=" + token.getToken());
     }
 
     /** How many days of history the platform report covers by default. */

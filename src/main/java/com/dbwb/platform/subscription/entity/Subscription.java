@@ -41,6 +41,17 @@ public class Subscription extends BaseEntity {
     private Instant graceEndsAt;
 
     /**
+     * Granted free by a Super Admin: never billed, never expires.
+     *
+     * Kept as its own flag rather than a SubscriptionStatus value because it is
+     * orthogonal to state - it says how this subscription is paid for, not where
+     * it stands - and folding it into the enum would mean every status check on
+     * the platform had to learn about it.
+     */
+    @Column(nullable = false)
+    private boolean complimentary = false;
+
+    /**
      * Whether this subscription ever served a single day.
      *
      * False for the zero-length trials produced when the configured trial
@@ -61,6 +72,14 @@ public class Subscription extends BaseEntity {
             return true;
         }
         return endDate.isAfter(startDate);
+    }
+
+    public boolean isComplimentary() {
+        return complimentary;
+    }
+
+    public void setComplimentary(boolean complimentary) {
+        this.complimentary = complimentary;
     }
 
     public BusinessWebsite getWebsite() {

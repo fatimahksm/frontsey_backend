@@ -21,13 +21,19 @@ public record SubscriptionResponse(
          * a locked plan without keeping its own copy of the rule - and can never
          * offer a switch the server is about to refuse.
          */
-        boolean canChangePlan
+        boolean canChangePlan,
+        /**
+         * Free access granted by a Super Admin. The owner is never billed and
+         * nothing expires, so every screen that would otherwise chase them for
+         * a payment has to know.
+         */
+        boolean complimentary
 ) {
     public static SubscriptionResponse from(Subscription s) {
         boolean lockedIn = s.getStatus() == SubscriptionStatus.ACTIVE || s.getStatus() == SubscriptionStatus.GRACE;
         return new SubscriptionResponse(
                 s.getId(), s.getWebsite().getId(), s.getPlan().getCode().name(),
                 s.getPlan().getBillingPeriod().name(), s.getStatus(),
-                s.getStartDate(), s.getEndDate(), s.getGraceEndsAt(), !lockedIn);
+                s.getStartDate(), s.getEndDate(), s.getGraceEndsAt(), !lockedIn, s.isComplimentary());
     }
 }

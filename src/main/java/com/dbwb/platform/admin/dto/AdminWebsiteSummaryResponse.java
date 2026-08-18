@@ -35,6 +35,8 @@ public record AdminWebsiteSummaryResponse(
         String planCode,
         String planBillingPeriod,
         SubscriptionStatus subscriptionStatus,
+        /** Free access granted by an admin - shown instead of a plan. */
+        boolean complimentary,
         Instant subscriptionEndsAt,
         String suspensionReason,
         Instant suspensionReactivateAt,
@@ -50,6 +52,7 @@ public record AdminWebsiteSummaryResponse(
                 subscription != null && subscription.getPlan() != null ? subscription.getPlan().getCode().name() : null,
                 subscription != null && subscription.getPlan() != null ? subscription.getPlan().getBillingPeriod().name() : null,
                 subscription != null ? subscription.getStatus() : null,
+                subscription != null && subscription.isComplimentary(),
                 subscription != null ? subscription.getEndDate() : null,
                 w.getSuspensionReason(), w.getSuspensionReactivateAt(), w.getPublishedAt());
     }

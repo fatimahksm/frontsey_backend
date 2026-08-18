@@ -225,5 +225,18 @@ public class AuthService {
         Account account = token.getAccount();
         account.setPasswordHash(passwordEncoder.encode(newPassword));
         token.setUsedAt(Instant.now());
+
+        // Following a link sent to that mailbox and setting a password proves
+        // control of the address, which is exactly what verification asks for.
+        // Without this an unverified account could complete a reset and still be
+        // refused at login with "verify your email first" - a dead end it had no
+        // way out of - and it is what lets a Super Admin stand an account up for
+        // an owner with one invitation rather than two.
+        if (!account.isEmailVerified()) {
+            account.setEmailVerified(true);
+            if (account.getStatus() == AccountStatus.PENDING_VERIFICATION) {
+                account.setStatus(AccountStatus.ACTIVE);
+            }
+        }
     }
 }

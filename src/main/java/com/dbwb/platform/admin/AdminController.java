@@ -3,6 +3,8 @@ package com.dbwb.platform.admin;
 import com.dbwb.platform.admin.dto.AccountSummaryResponse;
 import com.dbwb.platform.admin.dto.AdminDashboardResponse;
 import com.dbwb.platform.admin.dto.AdminPlatformReportResponse;
+import com.dbwb.platform.admin.dto.ProvisionWebsiteRequest;
+import com.dbwb.platform.admin.dto.ProvisionedWebsiteResponse;
 import com.dbwb.platform.admin.dto.AdminWebsiteSummaryResponse;
 import com.dbwb.platform.admin.dto.AdminWebsiteUpdateRequest;
 import com.dbwb.platform.admin.dto.AuditLogResponse;
@@ -79,6 +81,18 @@ public class AdminController {
     @GetMapping("/report")
     public ApiResponse<AdminPlatformReportResponse> report(@RequestParam(required = false) Integer days) {
         return ApiResponse.ok(adminService.getPlatformReport(currentAccount.get(), days));
+    }
+
+    /**
+     * Stand a website up for an owner named by email. Creates the account and
+     * invites them to set a password when it does not exist yet.
+     */
+    @PostMapping("/websites/provision")
+    public ApiResponse<ProvisionedWebsiteResponse> provisionWebsite(@Valid @RequestBody ProvisionWebsiteRequest request) {
+        var provisioned = adminService.provisionWebsiteForOwner(currentAccount.get(), request);
+        return ApiResponse.ok(provisioned, provisioned.ownerAccountCreated()
+                ? "Website created and the owner has been invited to set a password."
+                : "Website created on that owner's existing account.");
     }
 
     @GetMapping("/websites")

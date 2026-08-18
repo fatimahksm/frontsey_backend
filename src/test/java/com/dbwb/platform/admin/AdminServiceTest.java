@@ -5,6 +5,11 @@ import com.dbwb.platform.account.entity.AccountStatus;
 import com.dbwb.platform.account.entity.Role;
 import com.dbwb.platform.account.repository.AccountRepository;
 import com.dbwb.platform.profile.repository.BusinessProfileRepository;
+import com.dbwb.platform.account.repository.AccountTokenRepository;
+import com.dbwb.platform.common.config.BusinessRuleProperties;
+import com.dbwb.platform.common.config.FrontendProperties;
+import com.dbwb.platform.website.SlugGenerator;
+import org.springframework.security.crypto.password.PasswordEncoder;
 import com.dbwb.platform.admin.dto.AdminWebsiteUpdateRequest;
 import com.dbwb.platform.admin.dto.UpdateUserRoleRequest;
 import com.dbwb.platform.audit.AuditService;
@@ -45,6 +50,9 @@ class AdminServiceTest {
 
     @Mock private AccountRepository accountRepository;
     @Mock private BusinessProfileRepository profileRepository;
+    @Mock private AccountTokenRepository tokenRepository;
+    @Mock private PasswordEncoder passwordEncoder;
+    @Mock private SlugGenerator slugGenerator;
     @Mock private BusinessWebsiteRepository websiteRepository;
     @Mock private ThemeRepository themeRepository;
     @Mock private ThemeConfigValidator themeConfigValidator;
@@ -67,6 +75,8 @@ class AdminServiceTest {
     void setUp() {
         adminService = new AdminService(
                 accountRepository,
+                tokenRepository, passwordEncoder, slugGenerator,
+                new BusinessRuleProperties(), new FrontendProperties(),
                 profileRepository, websiteRepository, themeRepository, themeConfigValidator, planRepository, subscriptionRepository,
                 mockPaymentRepository, supportService, emailService, auditService, auditLogRepository);
     }
