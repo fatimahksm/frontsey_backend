@@ -8,6 +8,7 @@ import com.dbwb.platform.manager.entity.InvitationStatus;
 import com.dbwb.platform.manager.entity.ManagerAccess;
 import com.dbwb.platform.manager.entity.Permission;
 import com.dbwb.platform.manager.repository.ManagerAccessRepository;
+import com.dbwb.platform.subscription.repository.SubscriptionRepository;
 import com.dbwb.platform.security.AuthenticatedAccount;
 import com.dbwb.platform.testsupport.TestEntities;
 import com.dbwb.platform.website.entity.BusinessWebsite;
@@ -40,6 +41,8 @@ class WebsiteAccessGuardTest {
     private BusinessWebsiteRepository websiteRepository;
     @Mock
     private ManagerAccessRepository managerAccessRepository;
+    @Mock
+    private SubscriptionRepository subscriptionRepository;
 
     private WebsiteAccessGuard guard;
 
@@ -49,7 +52,7 @@ class WebsiteAccessGuardTest {
 
     @BeforeEach
     void setUp() {
-        guard = new WebsiteAccessGuard(websiteRepository, managerAccessRepository);
+        guard = new WebsiteAccessGuard(websiteRepository, managerAccessRepository, subscriptionRepository);
         owner = TestEntities.withId(new Account(), UUID.randomUUID());
         website = TestEntities.withId(new BusinessWebsite(), websiteId);
         website.setOwner(owner);
@@ -156,5 +159,63 @@ class WebsiteAccessGuardTest {
         set.addAll(java.util.Arrays.asList(permissions));
         access.setPermissions(set);
         return access;
+    }
+
+    // --- A website whose plan has ended is frozen, not deleted (BR-SUB-008) ---
+
+    private com.dbwb.platform.subscription.entity.Subscription subscriptionThatRan(
+            com.dbwb.platform.subscription.entity.SubscriptionStatus status) {
+        var subscription = new com.dbwb.platform.subscription.entity.Subscription();
+        subscription.setStatus(status);
+        subscription.setStartDate(java.time.Instant.now().minus(30, java.time.temporal.ChronoUnit.DAYS));
+        subscription.setEndDate(java.time.Instant.now().minus(1, java.time.temporal.ChronoUnit.DAYS));
+        return subscription;
+    }
+
+    @Test
+    void anExpiredPlanBlocksTheOwnerFromChangingTheSite() {
+        when(subscriptionRepository.findByWebsiteId(websiteId))
+                .thenReturn(Optional.of(subscriptionThatRan(
+                        com.dbwb.platform.subscription.entity.SubscriptionStatus.EXPIRED)));
+
+        assertThatThrownBy(() -> guard.requirePermission(websiteId, ownerCaller(), Permission.MANAGE_MENU))
+                .isInstanceOf(com.dbwb.platform.common.exception.BusinessRuleViolationException.class)
+                .hasMessageContaining("plan ended");
+    }
+
+    @Test
+    void anExpiredPlanStillLetsTheOwnerReadTheirOwnNumbers() {
+        // VIEW_ANALYTICS is a read. Being locked out of editing is not being
+        // locked out of looking.
+        assertThat(guard.requirePermission(websiteId, ownerCaller(), Permission.VIEW_ANALYTICS)).isEqualTo(website);
+    }
+
+    @Test
+    void aWebsiteWithNoSubscriptionYetIsNotFrozen() {
+        when(subscriptionRepository.findByWebsiteId(websiteId)).thenReturn(Optional.empty());
+
+        assertThat(guard.requirePermission(websiteId, ownerCaller(), Permission.MANAGE_MENU)).isEqualTo(website);
+    }
+
+    @Test
+    void aTrialThatNeverRanDoesNotFreezeTheWebsite() {
+        // The zero-length trials left by the misconfigured trial length. Freezing
+        // on those would make the publish that repairs them unreachable.
+        var burned = subscriptionThatRan(com.dbwb.platform.subscription.entity.SubscriptionStatus.EXPIRED);
+        java.time.Instant sameInstant = java.time.Instant.now().minus(3, java.time.temporal.ChronoUnit.HOURS);
+        burned.setStartDate(sameInstant);
+        burned.setEndDate(sameInstant);
+        when(subscriptionRepository.findByWebsiteId(websiteId)).thenReturn(Optional.of(burned));
+
+        assertThat(guard.requirePermission(websiteId, ownerCaller(), Permission.PUBLISH_WEBSITE)).isEqualTo(website);
+    }
+
+    @Test
+    void aLiveTrialDoesNotFreezeTheWebsite() {
+        var trial = subscriptionThatRan(com.dbwb.platform.subscription.entity.SubscriptionStatus.TRIAL);
+        trial.setEndDate(java.time.Instant.now().plus(5, java.time.temporal.ChronoUnit.DAYS));
+        when(subscriptionRepository.findByWebsiteId(websiteId)).thenReturn(Optional.of(trial));
+
+        assertThat(guard.requirePermission(websiteId, ownerCaller(), Permission.MANAGE_MENU)).isEqualTo(website);
     }
 }

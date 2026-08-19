@@ -15,8 +15,13 @@ public enum LayoutVariant {
     MENU_CLASSIC(TemplateType.MENU_ORDERING, true),
     /** Full-width cover hero, sticky category tabs, items as a card grid, cart as a slide-out drawer. */
     MENU_GRID(TemplateType.MENU_ORDERING, false),
-    /** Fine-dining style: display typography, single-column list with dotted price leaders, fixed bottom cart bar. */
-    MENU_ELEGANT(TemplateType.MENU_ORDERING, false),
+    /**
+     * Fine-dining style: display typography and a single-column list with
+     * dotted price leaders. Deliberately display-only, and stripped back
+     * further than Classic - it renders no gallery and no custom sections
+     * either, only the masthead, the search field, and the dishes.
+     */
+    MENU_ELEGANT(TemplateType.MENU_ORDERING, true),
     /** Warm, photography-led cafe/bistro style: bold headline hero, real combo-box deals, card-grid menu with sticky category filters. */
     MENU_BISTRO(TemplateType.MENU_ORDERING, false),
     /** Full-bleed dark hero, centered content, services grid, work gallery. */

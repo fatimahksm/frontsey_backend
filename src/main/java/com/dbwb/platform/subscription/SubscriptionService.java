@@ -5,7 +5,12 @@ import com.dbwb.platform.common.config.BusinessRuleProperties;
 import com.dbwb.platform.common.exception.BusinessRuleViolationException;
 import com.dbwb.platform.common.exception.ResourceNotFoundException;
 import com.dbwb.platform.notification.EmailService;
+import com.dbwb.platform.plan.entity.BillingPeriod;
+import com.dbwb.platform.plan.entity.TemplatePrice;
+import com.dbwb.platform.plan.repository.TemplatePriceRepository;
+import java.math.BigDecimal;
 import com.dbwb.platform.plan.entity.Plan;
+import com.dbwb.platform.plan.entity.PlanCode;
 import com.dbwb.platform.plan.repository.PlanRepository;
 import com.dbwb.platform.security.AuthenticatedAccount;
 import com.dbwb.platform.subscription.dto.CheckoutRequest;
@@ -24,6 +29,7 @@ import org.springframework.transaction.annotation.Transactional;
 import java.time.Instant;
 import java.time.Period;
 import java.time.temporal.ChronoUnit;
+import java.util.Optional;
 import java.util.UUID;
 
 /**
@@ -35,9 +41,13 @@ import java.util.UUID;
 @Service
 public class SubscriptionService {
 
+    /** Used when the configured trial length is missing or not a positive number. */
+    public static final int DEFAULT_TRIAL_DAYS = 10;
+
     private final SubscriptionRepository subscriptionRepository;
     private final MockPaymentRepository mockPaymentRepository;
     private final PlanRepository planRepository;
+    private final TemplatePriceRepository templatePriceRepository;
     private final WebsiteAccessGuard accessGuard;
     private final BusinessRuleProperties businessRules;
     private final EmailService emailService;
@@ -47,6 +57,7 @@ public class SubscriptionService {
             SubscriptionRepository subscriptionRepository,
             MockPaymentRepository mockPaymentRepository,
             PlanRepository planRepository,
+            TemplatePriceRepository templatePriceRepository,
             WebsiteAccessGuard accessGuard,
             BusinessRuleProperties businessRules,
             EmailService emailService,
@@ -54,6 +65,7 @@ public class SubscriptionService {
         this.subscriptionRepository = subscriptionRepository;
         this.mockPaymentRepository = mockPaymentRepository;
         this.planRepository = planRepository;
+        this.templatePriceRepository = templatePriceRepository;
         this.accessGuard = accessGuard;
         this.businessRules = businessRules;
         this.emailService = emailService;
@@ -65,28 +77,51 @@ public class SubscriptionService {
     public MockPayment checkout(UUID websiteId, AuthenticatedAccount caller, CheckoutRequest request) {
         BusinessWebsite website = accessGuard.requireOwner(websiteId, caller);
 
-        Plan plan = planRepository.findByCodeAndBillingPeriod(request.planCode(), request.billingPeriod())
+        // What this website costs is decided by its template, not by a tier the
+        // owner picks - they choose a template, then monthly or yearly. The
+        // template also names which plan's limits the website gets, which is the
+        // one place pricing and entitlement meet.
+        TemplatePrice pricing = templatePriceRepository
+                .findByLayoutVariant(website.getEffectiveLayoutVariant())
+                .filter(TemplatePrice::isActive)
+                .orElseThrow(() -> new ResourceNotFoundException(
+                        "This template has no price set. Ask support to price it before subscribing."));
+
+        Plan plan = planRepository.findByCodeAndBillingPeriod(pricing.getPlanCode(), request.billingPeriod())
                 .orElseThrow(() -> new ResourceNotFoundException("Plan not found."));
+        BigDecimal amount = pricing.priceFor(request.billingPeriod());
 
         Subscription subscription = subscriptionRepository.findByWebsiteId(websiteId).orElseGet(Subscription::new);
 
-        // BR-SUB-010: plan change only permitted once the current subscription has ended.
+        // BR-SUB-010, now read as the billing period rather than the tier: while a
+        // paid subscription runs, the only thing you can do is renew the one you
+        // have. A trial is deliberately not "still active" - its whole purpose is
+        // to be converted, at any point during it.
         boolean stillActive = subscription.getStatus() == SubscriptionStatus.ACTIVE
                 || subscription.getStatus() == SubscriptionStatus.GRACE;
         if (subscription.getId() != null && stillActive && subscription.getPlan() != null
-                && subscription.getPlan().getCode() != plan.getCode()) {
+                && subscription.getPlan().getBillingPeriod() != request.billingPeriod()) {
             throw new BusinessRuleViolationException(
-                    "The plan can only be changed after the current subscription ends.");
+                    "Monthly and yearly can only be switched once the current subscription ends.");
         }
+
+        // A trial that is still running stays running until the payment lands.
+        // Flipping it to PENDING here would unpublish the site mid-checkout.
+        boolean onLiveTrial = subscription.getStatus() == SubscriptionStatus.TRIAL
+                && subscription.getEndDate() != null && subscription.getEndDate().isAfter(Instant.now());
 
         subscription.setWebsite(website);
         subscription.setPlan(plan);
-        subscription.setStatus(SubscriptionStatus.PENDING);
+        if (!onLiveTrial) {
+            subscription.setStatus(SubscriptionStatus.PENDING);
+        }
         subscriptionRepository.save(subscription);
 
         MockPayment payment = new MockPayment();
         payment.setSubscription(subscription);
-        payment.setAmount(plan.getPrice());
+        // The template's price, not the plan's list price - the plan here carries
+        // the limits, and its own price column is what a tier would have cost.
+        payment.setAmount(amount);
         payment.setStatus(MockPaymentStatus.PENDING);
         payment.setReference("MOCK-WHISH-" + UUID.randomUUID().toString().substring(0, 8).toUpperCase());
         return mockPaymentRepository.save(payment);
@@ -110,7 +145,10 @@ public class SubscriptionService {
             Instant now = Instant.now();
             // BR-SUB-009: renewal before expiry extends from the existing end date;
             // otherwise (first activation / already expired) it starts from now.
-            Instant base = (subscription.getEndDate() != null && subscription.getEndDate().isAfter(now))
+            // Converting from a trial also starts from now - the unused days of a
+            // free trial are not credit to be stacked on top of a paid month.
+            boolean fromTrial = subscription.getStatus() == SubscriptionStatus.TRIAL;
+            Instant base = (!fromTrial && subscription.getEndDate() != null && subscription.getEndDate().isAfter(now))
                     ? subscription.getEndDate() : now;
 
             Period period = plan.getBillingPeriod() == com.dbwb.platform.plan.entity.BillingPeriod.YEARLY
@@ -118,7 +156,7 @@ public class SubscriptionService {
 
             Instant newEnd = base.atZone(java.time.ZoneOffset.UTC).plus(period).toInstant();
 
-            subscription.setStartDate(subscription.getStartDate() == null ? now : subscription.getStartDate());
+            subscription.setStartDate(subscription.getStartDate() == null || fromTrial ? now : subscription.getStartDate());
             subscription.setEndDate(newEnd);
             subscription.setGraceEndsAt(newEnd.plus(
                     businessRules.getSubscriptionGracePeriodDays(), ChronoUnit.DAYS));
@@ -133,6 +171,59 @@ public class SubscriptionService {
                     subscription.getWebsite().getId().toString());
         }
         return payment;
+    }
+
+    /**
+     * Opens the free trial for a website that has never had a subscription.
+     *
+     * Called from the publish path rather than from website creation: the thing
+     * being trialled is a working public link, and that does not exist until
+     * the owner publishes. Starting the clock at creation would burn the trial
+     * while somebody was still typing their menu in.
+     *
+     * Returns the trial, or empty when the website already has a subscription
+     * of any kind - a trial is once per website, and never replaces a paid one.
+     */
+    @Transactional
+    public Optional<Subscription> startTrialIfEligible(BusinessWebsite website) {
+        Subscription existing = subscriptionRepository.findByWebsiteId(website.getId()).orElse(null);
+        if (existing != null && existing.hasEverRun()) {
+            return Optional.empty();
+        }
+
+        Plan plan = planRepository.findByCodeAndBillingPeriod(PlanCode.BASIC, BillingPeriod.MONTHLY)
+                .orElseThrow(() -> new ResourceNotFoundException("No BASIC plan configured to base a trial on."));
+
+        Instant now = Instant.now();
+        Subscription trial = existing != null ? existing : new Subscription();
+        trial.setWebsite(website);
+        trial.setPlan(plan);
+        trial.setStatus(SubscriptionStatus.TRIAL);
+        trial.setStartDate(now);
+        trial.setEndDate(now.plus(trialDays(), ChronoUnit.DAYS));
+        // Deliberately no graceEndsAt: a trial ends on its end date, full stop.
+        trial.setGraceEndsAt(null);
+        subscriptionRepository.save(trial);
+
+        emailService.send(website.getOwner().getEmail(), "Your free trial has started",
+                "Your website is live for the next " + trialDays()
+                        + " days. Subscribe before it ends to keep it online.");
+        auditService.record(website.getOwner().getId(), "SUBSCRIPTION_TRIAL_STARTED", website.getId().toString());
+        return Optional.of(trial);
+    }
+
+    /**
+     * The trial length, never zero.
+     *
+     * An unset dbwb.business-rules.subscription-trial-days binds to 0, and a
+     * zero-day trial is worse than no trial: endDate lands on startDate, so the
+     * next maintenance pass expires it and takes the site that was just
+     * published straight back offline. A missing or nonsensical setting must
+     * degrade to a real trial, not to an instant outage.
+     */
+    private int trialDays() {
+        int configured = businessRules.getSubscriptionTrialDays();
+        return configured > 0 ? configured : DEFAULT_TRIAL_DAYS;
     }
 
     @Transactional(readOnly = true)
@@ -151,6 +242,18 @@ public class SubscriptionService {
     @Transactional
     public void runLifecycleMaintenance() {
         Instant now = Instant.now();
+
+        // A finished trial stops the site the same day. There is no grace period
+        // on something that was never paid for - that is what makes it a trial.
+        subscriptionRepository.findByStatusAndEndDateBefore(SubscriptionStatus.TRIAL, now)
+                .forEach(sub -> {
+                    sub.setStatus(SubscriptionStatus.EXPIRED);
+                    BusinessWebsite website = sub.getWebsite();
+                    website.setStatus(WebsiteStatus.EXPIRED);
+                    emailService.send(website.getOwner().getEmail(), "Your free trial has ended",
+                            "Your trial is over and your website is no longer publicly available. "
+                                    + "Subscribe to bring it back online.");
+                });
 
         subscriptionRepository.findByStatusAndEndDateBefore(SubscriptionStatus.ACTIVE, now)
                 .forEach(sub -> {

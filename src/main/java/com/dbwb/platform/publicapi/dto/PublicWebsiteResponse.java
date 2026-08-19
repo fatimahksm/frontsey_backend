@@ -41,7 +41,13 @@ public record PublicWebsiteResponse(
          * scratch. Single source of truth shared by the public site, the owner's
          * draft preview, and (in future) the published snapshot.
          */
-        ThemeConfig theme
+        ThemeConfig theme,
+        /**
+         * Projects for the PORTFOLIO templates, in the owner's order. Empty for
+         * every menu site and for any portfolio that has not added one, so it
+         * is always a list and never null.
+         */
+        List<PublicProject> projects
 ) {
     public record PublicSeoMetadata(String metaTitle, String metaDescription, String ogImageUrl) {
     }
@@ -73,5 +79,19 @@ public record PublicWebsiteResponse(
 
     /** `data` is opaque JSON whose shape depends on `type` - parsed on the frontend. */
     public record PublicPageSection(String id, PageSectionType type, String data) {
+    }
+
+    /** A project as a visitor sees it - tags already split, nothing internal. */
+    public record PublicProject(
+            String id,
+            String name,
+            String discipline,
+            String year,
+            String summary,
+            List<String> tags,
+            String imageUrl,
+            String liveUrl,
+            String repoUrl
+    ) {
     }
 }

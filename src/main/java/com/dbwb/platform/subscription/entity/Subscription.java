@@ -40,6 +40,48 @@ public class Subscription extends BaseEntity {
     /** BR-SUB-006: computed as endDate + configured grace period days. */
     private Instant graceEndsAt;
 
+    /**
+     * Granted free by a Super Admin: never billed, never expires.
+     *
+     * Kept as its own flag rather than a SubscriptionStatus value because it is
+     * orthogonal to state - it says how this subscription is paid for, not where
+     * it stands - and folding it into the enum would mean every status check on
+     * the platform had to learn about it.
+     */
+    @Column(nullable = false)
+    private boolean complimentary = false;
+
+    /**
+     * Whether this subscription ever served a single day.
+     *
+     * False for the zero-length trials produced when the configured trial
+     * length was missing (endDate landed on startDate, so the next maintenance
+     * pass expired it immediately). Such a row is not a subscription the owner
+     * has had: it must not count against their one free trial, and it must not
+     * freeze the website the way a plan that genuinely ran out does.
+     *
+     * graceEndsAt is the tell that a payment once succeeded, since
+     * SubscriptionService.resolvePaymentOutcome always sets it - so anything
+     * ever paid for is "has run", whatever its dates say.
+     */
+    public boolean hasEverRun() {
+        if (graceEndsAt != null) {
+            return true;
+        }
+        if (startDate == null || endDate == null) {
+            return true;
+        }
+        return endDate.isAfter(startDate);
+    }
+
+    public boolean isComplimentary() {
+        return complimentary;
+    }
+
+    public void setComplimentary(boolean complimentary) {
+        this.complimentary = complimentary;
+    }
+
     public BusinessWebsite getWebsite() {
         return website;
     }

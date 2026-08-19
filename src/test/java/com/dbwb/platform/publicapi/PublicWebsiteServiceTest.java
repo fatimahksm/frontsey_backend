@@ -47,6 +47,7 @@ class PublicWebsiteServiceTest {
     @Mock private SeoMetadataRepository seoMetadataRepository;
     @Mock private ServiceItemRepository serviceItemRepository;
     @Mock private PageSectionRepository pageSectionRepository;
+    @Mock private com.dbwb.platform.portfolio.repository.PortfolioProjectRepository portfolioProjectRepository;
     @Mock private ThemeConfigValidator themeConfigValidator;
 
     private PublicWebsiteService service;
@@ -57,7 +58,7 @@ class PublicWebsiteServiceTest {
                 websiteRepository, profileRepository, openingHoursRepository, categoryRepository, menuItemRepository,
                 sizeVariantRepository, addonGroupRepository, addonRepository, boxVariantRepository,
                 deliveryAreaRepository, galleryImageRepository, seoMetadataRepository, serviceItemRepository,
-                pageSectionRepository, themeConfigValidator);
+                pageSectionRepository, themeConfigValidator, portfolioProjectRepository);
     }
 
     private BusinessWebsite websiteWith(String draftContent, String publishedContent) {

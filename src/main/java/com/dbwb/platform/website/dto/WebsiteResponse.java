@@ -27,6 +27,8 @@ public record WebsiteResponse(
         String publishedContent,
         Instant publishedAt,
         UUID themeId,
+        /** This website's own ThemeConfig JSON overriding the preset, or null when it inherits the preset unchanged. */
+        String themeConfig,
         /** Phase 4: the caller's role on this website. Null where the caller isn't known to be resolved (action-response endpoints that don't need it). */
         AccessRole role,
         /** For role=MANAGER, exactly the permissions granted; empty for role=OWNER (an owner implicitly has all of them). */
@@ -43,6 +45,7 @@ public record WebsiteResponse(
                 w.getStatus(), w.getPrimaryLanguage(), w.getCurrency(),
                 w.getDraftContent(), w.getPublishedContent(), w.getPublishedAt(),
                 w.getTheme() != null ? w.getTheme().getId() : null,
+                w.getThemeConfig(),
                 role, permissions);
     }
 }

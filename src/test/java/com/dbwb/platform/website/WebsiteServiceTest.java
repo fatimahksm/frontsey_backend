@@ -15,6 +15,7 @@ import com.dbwb.platform.profile.repository.BusinessProfileRepository;
 import com.dbwb.platform.publicapi.PublicWebsiteService;
 import com.dbwb.platform.security.AuthenticatedAccount;
 import com.dbwb.platform.subscription.SubscriptionQueryService;
+import com.dbwb.platform.subscription.SubscriptionService;
 import com.dbwb.platform.testsupport.TestEntities;
 import com.dbwb.platform.theme.repository.ThemeRepository;
 import com.dbwb.platform.website.entity.BusinessWebsite;
@@ -39,6 +40,8 @@ import java.util.UUID;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.Mockito.lenient;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
 /**
@@ -58,9 +61,11 @@ class WebsiteServiceTest {
     @Mock private SlugGenerator slugGenerator;
     @Mock private WebsiteAccessGuard accessGuard;
     @Mock private SubscriptionQueryService subscriptionQueryService;
+    @Mock private SubscriptionService subscriptionService;
     @Mock private com.dbwb.platform.audit.AuditService auditService;
     @Mock private PublicWebsiteService publicWebsiteService;
     @Mock private ManagerAccessRepository managerAccessRepository;
+    @Mock private com.dbwb.platform.theme.ThemeConfigValidator themeConfigValidator;
 
     private WebsiteService websiteService;
 
@@ -72,8 +77,8 @@ class WebsiteServiceTest {
     void setUp() {
         websiteService = new WebsiteService(
                 websiteRepository, themeRepository, accountRepository, profileRepository, categoryRepository,
-                serviceItemRepository, slugGenerator, accessGuard, subscriptionQueryService, auditService,
-                publicWebsiteService, managerAccessRepository);
+                serviceItemRepository, slugGenerator, accessGuard, subscriptionQueryService, subscriptionService,
+                auditService, publicWebsiteService, managerAccessRepository, themeConfigValidator);
 
         website = TestEntities.withId(new BusinessWebsite(), websiteId);
         website.setBusinessName("Test Business");
@@ -92,6 +97,28 @@ class WebsiteServiceTest {
 
     private static <T> T eq(T value) {
         return org.mockito.ArgumentMatchers.eq(value);
+    }
+
+    @Test
+    void updateThemeConfigStoresTheOverrideAfterValidatingIt() {
+        when(accessGuard.requirePermission(websiteId, owner, Permission.MANAGE_THEME_AND_CONTENT)).thenReturn(website);
+
+        websiteService.updateThemeConfig(websiteId, owner, "{\"primaryColor\":\"#123456\"}");
+
+        assertThat(website.getThemeConfig()).isEqualTo("{\"primaryColor\":\"#123456\"}");
+        verify(themeConfigValidator).parseAndValidate("{\"primaryColor\":\"#123456\"}");
+    }
+
+    @Test
+    void updateThemeConfigWithNullClearsTheOverrideSoThePresetAppliesAgain() {
+        website.setThemeConfig("{\"primaryColor\":\"#123456\"}");
+        when(accessGuard.requirePermission(websiteId, owner, Permission.MANAGE_THEME_AND_CONTENT)).thenReturn(website);
+
+        websiteService.updateThemeConfig(websiteId, owner, null);
+
+        assertThat(website.getThemeConfig()).isNull();
+        // Nothing to validate when the override is being removed.
+        verifyNoInteractions(themeConfigValidator);
     }
 
     @Test

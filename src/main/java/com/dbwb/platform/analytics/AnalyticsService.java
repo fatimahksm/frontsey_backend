@@ -15,7 +15,11 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Instant;
+import java.time.LocalDate;
+import java.time.ZoneOffset;
+import java.util.ArrayList;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 
@@ -83,7 +87,34 @@ public class AnalyticsService {
         Map<String, Long> byDeviceType = new LinkedHashMap<>();
         repository.visitsByDeviceType(websiteId, from, to).forEach(row -> byDeviceType.put(row.getKey(), row.getTotal()));
 
-        return new AnalyticsSummaryResponse(from, to, totalVisits, mostViewed, byReferralSource, byDeviceType);
+        return new AnalyticsSummaryResponse(
+                from, to, totalVisits, mostViewed, byReferralSource, byDeviceType, dailyVisits(websiteId, from, to));
+    }
+
+    /**
+     * Daily visit counts across the whole range, quiet days included.
+     *
+     * The query only returns days that had traffic; a chart drawn straight from
+     * that would put Monday next to Friday and read as continuous. Filling the
+     * gaps here keeps every consumer - the dashboard, a future export - honest
+     * by default.
+     */
+    private List<AnalyticsSummaryResponse.DailyVisitCount> dailyVisits(UUID websiteId, Instant from, Instant to) {
+        Map<String, Long> counts = new LinkedHashMap<>();
+        repository.visitsByDay(websiteId, from, to).forEach(row -> counts.put(row.getKey(), row.getTotal()));
+
+        List<AnalyticsSummaryResponse.DailyVisitCount> days = new ArrayList<>();
+        LocalDate cursor = from.atZone(ZoneOffset.UTC).toLocalDate();
+        LocalDate last = to.atZone(ZoneOffset.UTC).toLocalDate();
+        // A range longer than a year is not a trend line, it is a wall; cap the
+        // series rather than returning something no chart can draw.
+        int guard = 0;
+        while (!cursor.isAfter(last) && guard++ < 366) {
+            String key = cursor.toString();
+            days.add(new AnalyticsSummaryResponse.DailyVisitCount(key, counts.getOrDefault(key, 0L)));
+            cursor = cursor.plusDays(1);
+        }
+        return days;
     }
 
     /**

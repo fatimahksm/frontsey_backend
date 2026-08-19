@@ -7,6 +7,7 @@ import com.dbwb.platform.website.dto.CreateWebsiteRequest;
 import com.dbwb.platform.website.dto.UpdateDraftContentRequest;
 import com.dbwb.platform.website.dto.UpdateLayoutVariantRequest;
 import com.dbwb.platform.website.dto.UpdateThemeRequest;
+import com.dbwb.platform.website.dto.UpdateThemeConfigRequest;
 import com.dbwb.platform.website.dto.WebsiteResponse;
 import jakarta.validation.Valid;
 import org.springframework.web.bind.annotation.DeleteMapping;
@@ -74,6 +75,12 @@ public class WebsiteController {
     @PutMapping("/{id}/theme")
     public ApiResponse<WebsiteResponse> updateTheme(@PathVariable UUID id, @RequestBody UpdateThemeRequest request) {
         var website = websiteService.updateTheme(id, currentAccount.get(), request.themeId());
+        return ApiResponse.ok(WebsiteResponse.from(website), "Theme updated.");
+    }
+
+    @PutMapping("/{id}/theme-config")
+    public ApiResponse<WebsiteResponse> updateThemeConfig(@PathVariable UUID id, @RequestBody UpdateThemeConfigRequest request) {
+        var website = websiteService.updateThemeConfig(id, currentAccount.get(), request.themeConfig());
         return ApiResponse.ok(WebsiteResponse.from(website), "Theme updated.");
     }
 

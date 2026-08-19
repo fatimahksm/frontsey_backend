@@ -4,6 +4,12 @@ import com.dbwb.platform.account.entity.Account;
 import com.dbwb.platform.account.entity.AccountStatus;
 import com.dbwb.platform.account.entity.Role;
 import com.dbwb.platform.account.repository.AccountRepository;
+import com.dbwb.platform.profile.repository.BusinessProfileRepository;
+import com.dbwb.platform.account.repository.AccountTokenRepository;
+import com.dbwb.platform.common.config.BusinessRuleProperties;
+import com.dbwb.platform.common.config.FrontendProperties;
+import com.dbwb.platform.website.SlugGenerator;
+import org.springframework.security.crypto.password.PasswordEncoder;
 import com.dbwb.platform.admin.dto.AdminWebsiteUpdateRequest;
 import com.dbwb.platform.admin.dto.UpdateUserRoleRequest;
 import com.dbwb.platform.audit.AuditService;
@@ -13,6 +19,7 @@ import com.dbwb.platform.common.exception.AccessDeniedForTenantException;
 import com.dbwb.platform.common.exception.BusinessRuleViolationException;
 import com.dbwb.platform.notification.EmailService;
 import com.dbwb.platform.plan.repository.PlanRepository;
+import com.dbwb.platform.plan.repository.TemplatePriceRepository;
 import com.dbwb.platform.security.AuthenticatedAccount;
 import com.dbwb.platform.subscription.repository.MockPaymentRepository;
 import com.dbwb.platform.subscription.repository.SubscriptionRepository;
@@ -43,10 +50,15 @@ import static org.mockito.Mockito.when;
 class AdminServiceTest {
 
     @Mock private AccountRepository accountRepository;
+    @Mock private BusinessProfileRepository profileRepository;
+    @Mock private AccountTokenRepository tokenRepository;
+    @Mock private PasswordEncoder passwordEncoder;
+    @Mock private SlugGenerator slugGenerator;
     @Mock private BusinessWebsiteRepository websiteRepository;
     @Mock private ThemeRepository themeRepository;
     @Mock private ThemeConfigValidator themeConfigValidator;
     @Mock private PlanRepository planRepository;
+    @Mock private TemplatePriceRepository templatePriceRepository;
     @Mock private SubscriptionRepository subscriptionRepository;
     @Mock private MockPaymentRepository mockPaymentRepository;
     @Mock private SupportService supportService;
@@ -64,7 +76,10 @@ class AdminServiceTest {
     @BeforeEach
     void setUp() {
         adminService = new AdminService(
-                accountRepository, websiteRepository, themeRepository, themeConfigValidator, planRepository, subscriptionRepository,
+                accountRepository,
+                tokenRepository, passwordEncoder, slugGenerator,
+                new BusinessRuleProperties(), new FrontendProperties(),
+                profileRepository, websiteRepository, themeRepository, themeConfigValidator, planRepository, templatePriceRepository, subscriptionRepository,
                 mockPaymentRepository, supportService, emailService, auditService, auditLogRepository);
     }
 
