@@ -24,25 +24,20 @@ public enum LayoutVariant {
     MENU_ELEGANT(TemplateType.MENU_ORDERING, true),
     /** Warm, photography-led cafe/bistro style: bold headline hero, real combo-box deals, card-grid menu with sticky category filters. */
     MENU_BISTRO(TemplateType.MENU_ORDERING, false),
-    // The four portfolio names no longer describe their designs.
-    //
-    // They were rebuilt around four audiences rather than four looks, and the
-    // decision at the time was to keep the stored names and change only the
-    // labels - renaming them would have needed a migration mapping every
-    // existing business_websites.layout_variant row, since an unmapped value
-    // fails to deserialise on read. So the names below are historical, and the
-    // comment on each says what it actually renders. The owner-facing labels
-    // live in the frontend's lib/website/layout-options.ts, which is the only
-    // place a person sees.
+    // These four were HERO / MINIMAL / BOLD / PROFILE until V19 renamed them.
+    // The templates had been rebuilt around four audiences and the old names
+    // described the designs they replaced, so each name said the opposite of
+    // what it selected. The owner-facing labels live in the frontend's
+    // lib/website/layout-options.ts; these are the stored values.
 
     /** Renders "Professional / CV" - experience, skills, projects and a downloadable CV, dense and dark. For developers, engineers, accountants, consultants. */
-    PORTFOLIO_HERO(TemplateType.PORTFOLIO, true),
+    PORTFOLIO_PROFESSIONAL(TemplateType.PORTFOLIO, true),
     /** Renders "Creative / Visual" - pictures first, large editorial compositions with a caption beside each, on warm paper. For designers, photographers, architects, artists. */
-    PORTFOLIO_MINIMAL(TemplateType.PORTFOLIO, true),
+    PORTFOLIO_VISUAL(TemplateType.PORTFOLIO, true),
     /** Renders "Brand / Product" - a loud front page for something you made: story, featured items, social links, heavy type. For small businesses, creators, studios, shops. */
-    PORTFOLIO_BOLD(TemplateType.PORTFOLIO, true),
+    PORTFOLIO_BRAND(TemplateType.PORTFOLIO, true),
     /** Renders "Freelancer / Services" - built to get you booked: offers and prices, client proof, FAQ, a contact button never far away. For coaches, marketers, trainers, tutors. */
-    PORTFOLIO_PROFILE(TemplateType.PORTFOLIO, true);
+    PORTFOLIO_SERVICES(TemplateType.PORTFOLIO, true);
 
     private final TemplateType templateType;
     private final boolean displayOnly;
@@ -67,6 +62,6 @@ public enum LayoutVariant {
     }
 
     public static LayoutVariant defaultFor(TemplateType templateType) {
-        return templateType == TemplateType.PORTFOLIO ? PORTFOLIO_HERO : MENU_CLASSIC;
+        return templateType == TemplateType.PORTFOLIO ? PORTFOLIO_PROFESSIONAL : MENU_CLASSIC;
     }
 }

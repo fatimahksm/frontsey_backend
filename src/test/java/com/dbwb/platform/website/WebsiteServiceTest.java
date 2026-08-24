@@ -182,7 +182,7 @@ class WebsiteServiceTest {
     void unsetLayoutVariantDefaultsToHeroForPortfolio() {
         website.setTemplateType(TemplateType.PORTFOLIO);
 
-        assertThat(website.getEffectiveLayoutVariant()).isEqualTo(LayoutVariant.PORTFOLIO_HERO);
+        assertThat(website.getEffectiveLayoutVariant()).isEqualTo(LayoutVariant.PORTFOLIO_PROFESSIONAL);
     }
 
     @Test
@@ -230,7 +230,7 @@ class WebsiteServiceTest {
     void cannotSwitchToALayoutThatBelongsToTheOtherTemplateType() {
         website.setTemplateType(TemplateType.MENU_ORDERING);
 
-        assertThatThrownBy(() -> websiteService.updateLayoutVariant(websiteId, owner, LayoutVariant.PORTFOLIO_HERO))
+        assertThatThrownBy(() -> websiteService.updateLayoutVariant(websiteId, owner, LayoutVariant.PORTFOLIO_PROFESSIONAL))
                 .isInstanceOf(BusinessRuleViolationException.class)
                 .hasMessageContaining("not a valid layout");
     }
