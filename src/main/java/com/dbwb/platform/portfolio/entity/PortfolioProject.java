@@ -34,7 +34,17 @@ public class PortfolioProject extends BaseEntity {
     /** "Brand identity", "Product design", "Frontend" - the templates label projects with it. */
     private String discipline;
 
-    /** Free text rather than a number: owners write "2024", "2023-24", "Ongoing". */
+    /**
+     * Free text rather than a number: owners write "2024", "2023-24", "Ongoing".
+     *
+     * The column is project_year, not year: H2 - which the test profile builds
+     * its schema on - reserves YEAR as an identifier, so Hibernate's generated
+     * CREATE TABLE failed there and the whole table was silently absent from
+     * every test run. Postgres accepts the bare word, which is why V15 created
+     * it and production never noticed. The Java field and the API keep the name
+     * "year"; only the column moved.
+     */
+    @Column(name = "project_year")
     private String year;
 
     @Column(columnDefinition = "TEXT")

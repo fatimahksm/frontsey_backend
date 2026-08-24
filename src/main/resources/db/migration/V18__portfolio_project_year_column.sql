@@ -1,0 +1,13 @@
+-- Renames portfolio_projects.year to project_year.
+--
+-- V15 created the column as a bare `year`. Postgres accepts that (YEAR is not
+-- reserved there), so production has worked fine. H2 does not: the test
+-- profile builds its schema from the entities with ddl-auto, H2 rejected
+-- `year` as an identifier, and Hibernate logged the CREATE TABLE failure and
+-- carried on - leaving portfolio_projects missing from every test run while
+-- the build stayed green. Any test touching the table failed on "table not
+-- found", which is why none were ever written.
+--
+-- Renaming the column is what makes the entity mappable on both databases.
+-- The Java field and the JSON contract still say "year", so no client changes.
+ALTER TABLE portfolio_projects RENAME COLUMN year TO project_year;

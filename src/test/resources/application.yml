@@ -12,6 +12,10 @@ spring:
   jpa:
     hibernate:
       ddl-auto: create-drop
+    # Production sets this too. Left at Spring's default, tests ran with an
+    # open session that quietly resolved lazy associations the real app would
+    # have thrown LazyInitializationException on.
+    open-in-view: false
 
   flyway:
     enabled: false
@@ -28,15 +32,23 @@ dbwb:
   cors:
     allowed-origins: http://localhost:3000
 
+  # Every key application.yml defines is repeated here, in the same order.
+  # A key present there and missing here binds to 0/null under test, which is
+  # how the zero-day-trial bug reached production looking tested: nothing here
+  # set subscription-trial-days, so the trial window under test was never the
+  # one real users got. Adding a rule in application.yml means adding it here.
   business-rules:
     subscription-grace-period-days: 3
+    subscription-trial-days: 10
     account-deletion-disable-window-days: 30
     website-trash-retention-days: 30
     menu-item-trash-retention-days: 7
     website-public-load-target-seconds: 3
     email-verification-token-ttl-hours: 24
     password-reset-token-ttl-minutes: 30
+    refresh-token-ttl-days: 30
     maintenance-job-interval-ms: 3600000
+    manager-invitation-expiry-days: 14
 
   frontend:
     public-site-base-url: http://localhost:3000
@@ -47,3 +59,15 @@ dbwb:
   admin:
     bootstrap-email:
     bootstrap-password:
+
+  uploads:
+    # Under target/, so a test that does write a file leaves nothing in the
+    # working tree. UploadServiceTest still uses its own @TempDir.
+    directory: target/test-uploads
+    max-file-size-mb: 5
+
+  ai:
+    # Blank on purpose: no test may reach OpenRouter, and AiSuggestionService
+    # refuses with a clear message rather than calling out when the key is empty.
+    openrouter-api-key:
+    model: deepseek/deepseek-chat
