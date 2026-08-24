@@ -3,10 +3,13 @@ package com.dbwb.platform.ai;
 import com.dbwb.platform.ai.dto.AiSuggestionFieldType;
 import com.dbwb.platform.ai.dto.AiSuggestionRequest;
 import com.dbwb.platform.common.exception.BusinessRuleViolationException;
+import org.springframework.boot.web.client.ClientHttpRequestFactories;
+import org.springframework.boot.web.client.ClientHttpRequestFactorySettings;
 import org.springframework.stereotype.Service;
 import org.springframework.web.client.RestClient;
 import org.springframework.web.client.RestClientException;
 
+import java.time.Duration;
 import java.util.List;
 import java.util.Map;
 
@@ -24,7 +27,16 @@ public class AiSuggestionService {
 
     public AiSuggestionService(AiProperties properties) {
         this.properties = properties;
-        this.restClient = RestClient.builder().baseUrl("https://openrouter.ai/api/v1").build();
+        // Timeouts, because there were none: a hung upstream held a request
+        // thread for as long as it liked. The read timeout is generous - a
+        // model can legitimately take a while to answer - but finite.
+        ClientHttpRequestFactorySettings timeouts = ClientHttpRequestFactorySettings.DEFAULTS
+                .withConnectTimeout(Duration.ofSeconds(10))
+                .withReadTimeout(Duration.ofSeconds(30));
+        this.restClient = RestClient.builder()
+                .baseUrl("https://openrouter.ai/api/v1")
+                .requestFactory(ClientHttpRequestFactories.get(timeouts))
+                .build();
     }
 
     public String suggest(AiSuggestionRequest request) {

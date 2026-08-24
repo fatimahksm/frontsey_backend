@@ -50,6 +50,18 @@ dbwb:
     maintenance-job-interval-ms: 3600000
     manager-invitation-expiry-days: 14
 
+  # Mirrors application.yml. Left enabled so the wiring is exercised; the
+  # ceilings are far above anything a test issues, and RateLimiterTest and
+  # RateLimitFilterTest drive the limiter directly with their own policies.
+  rate-limits:
+    enabled: true
+    login:              { limit: 10,  window-minutes: 15 }
+    registration:       { limit: 5,   window-minutes: 60 }
+    password-reset:     { limit: 5,   window-minutes: 60 }
+    ai-suggestions:     { limit: 30,  window-minutes: 60 }
+    public-item-view:   { limit: 60,  window-minutes: 1 }
+    public-page-view:   { limit: 240, window-minutes: 1 }
+
   frontend:
     public-site-base-url: http://localhost:3000
 

@@ -67,6 +67,18 @@ dbwb:
     manager-invitation-expiry-days: 14        # BR-MGR-007
     refresh-token-ttl-days: ${JWT_REFRESH_TTL_DAYS:30}  # BR-AUTH-007
 
+  # Request-rate ceilings. Nothing capped these endpoints before: login,
+  # registration and password reset were unbounded, the public endpoints write
+  # an analytics row per anonymous call, and every AI call spends real money.
+  rate-limits:
+    enabled: true
+    login:              { limit: 10,  window-minutes: 15 }
+    registration:       { limit: 5,   window-minutes: 60 }
+    password-reset:     { limit: 5,   window-minutes: 60 }
+    ai-suggestions:     { limit: 30,  window-minutes: 60 }
+    public-item-view:   { limit: 60,  window-minutes: 1 }
+    public-page-view:   { limit: 240, window-minutes: 1 }
+
   frontend:
     public-site-base-url: ${PUBLIC_SITE_BASE_URL:http://localhost:3000}
 

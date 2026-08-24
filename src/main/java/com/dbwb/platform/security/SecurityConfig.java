@@ -26,11 +26,14 @@ import java.util.List;
 public class SecurityConfig {
 
     private final JwtAuthFilter jwtAuthFilter;
+    private final RateLimitFilter rateLimitFilter;
     private final List<String> allowedOrigins;
     private final ObjectMapper objectMapper;
 
-    public SecurityConfig(JwtAuthFilter jwtAuthFilter, CorsProperties corsProperties, ObjectMapper objectMapper) {
+    public SecurityConfig(JwtAuthFilter jwtAuthFilter, RateLimitFilter rateLimitFilter,
+                          CorsProperties corsProperties, ObjectMapper objectMapper) {
         this.jwtAuthFilter = jwtAuthFilter;
+        this.rateLimitFilter = rateLimitFilter;
         this.allowedOrigins = corsProperties.getAllowedOriginsList();
         this.objectMapper = objectMapper;
     }
@@ -61,7 +64,11 @@ public class SecurityConfig {
                         // Everything else requires a valid access token; per-endpoint role
                         // and tenant-ownership checks are enforced in the service layer.
                         .anyRequest().authenticated())
-                .addFilterBefore(jwtAuthFilter, UsernamePasswordAuthenticationFilter.class);
+                .addFilterBefore(jwtAuthFilter, UsernamePasswordAuthenticationFilter.class)
+                // After JwtAuthFilter on purpose: a per-account limit needs the
+                // principal to already be in the context, or several owners
+                // behind one office NAT would share one allowance.
+                .addFilterAfter(rateLimitFilter, JwtAuthFilter.class);
 
         return http.build();
     }
