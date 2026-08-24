@@ -4,6 +4,10 @@ import com.dbwb.platform.delivery.repository.DeliveryAreaRepository;
 import com.dbwb.platform.gallery.repository.GalleryImageRepository;
 import com.dbwb.platform.menu.entity.Addon;
 import com.dbwb.platform.menu.entity.AddonGroup;
+import com.dbwb.platform.menu.entity.BoxVariant;
+import com.dbwb.platform.menu.entity.Category;
+import com.dbwb.platform.menu.entity.MenuItem;
+import com.dbwb.platform.menu.entity.SizeVariant;
 import com.dbwb.platform.menu.repository.AddonGroupRepository;
 import com.dbwb.platform.menu.repository.AddonRepository;
 import com.dbwb.platform.menu.repository.BoxVariantRepository;
@@ -32,6 +36,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
+import java.util.stream.Collectors;
 
 /**
  * BR-QR-003/004: an unknown/deleted/trashed slug yields NOT_FOUND (branded
@@ -99,18 +104,29 @@ public class PublicWebsiteService {
         return websiteRepository.findBySlug(slug).map(BusinessWebsite::getId);
     }
 
+    /**
+     * Resolves a slug once and hands back both the payload and the website's
+     * id, so a caller that needs to record the visit does not look the same
+     * slug up a second time.
+     */
     @Transactional(readOnly = true)
-    public PublicWebsiteEnvelope getBySlug(String slug) {
+    public PublicWebsiteLookup lookupBySlug(String slug) {
         BusinessWebsite website = websiteRepository.findBySlug(slug).orElse(null);
         if (website == null) {
-            return PublicWebsiteEnvelope.notFound();
+            return new PublicWebsiteLookup(null, PublicWebsiteEnvelope.notFound());
         }
 
-        return switch (website.getStatus()) {
+        PublicWebsiteEnvelope envelope = switch (website.getStatus()) {
             case PUBLISHED -> PublicWebsiteEnvelope.available(assemble(website, website.getPublishedContent()));
             case SUSPENDED_TEMPORARY, SUSPENDED_PERMANENT, EXPIRED -> PublicWebsiteEnvelope.unavailable();
             case DRAFT, TRASHED, DELETED -> PublicWebsiteEnvelope.notFound();
         };
+        return new PublicWebsiteLookup(website.getId(), envelope);
+    }
+
+    @Transactional(readOnly = true)
+    public PublicWebsiteEnvelope getBySlug(String slug) {
+        return lookupBySlug(slug).envelope();
     }
 
     /** Owner/manager preview of the current draft, regardless of publish status - access is gated by the caller (see WebsiteAccessGuard at the call site). */
@@ -147,17 +163,31 @@ public class PublicWebsiteService {
         // Two-level tree: top-level categories carry their own items plus their
         // sub-categories. Items filed directly against a parent still show, so
         // a menu can mix "Coffee -> Hot/Iced" with un-grouped items.
-        List<PublicWebsiteResponse.PublicCategory> categories = categoryRepository
-                .findByWebsiteIdAndParentIsNull(website.getId()).stream()
+        //
+        // The whole menu is loaded in a fixed number of queries and assembled in
+        // memory. Doing it per category and per item instead meant a category
+        // query per parent plus four queries for every single item (sizes,
+        // add-on groups, add-ons per group, box variants) - a 100-item menu ran
+        // over 400 queries on every public page load, against a 3-second target
+        // (BR-NFR-001). This is now flat in the size of the menu.
+        Map<UUID, List<PublicMenuItem>> itemsByCategory = publicItemsByCategory(website.getId());
+        List<Category> allCategories = categoryRepository.findByWebsiteId(website.getId());
+        Map<UUID, List<Category>> subcategoriesByParent = allCategories.stream()
+                .filter(category -> category.getParent() != null)
+                .collect(Collectors.groupingBy(category -> category.getParent().getId()));
+
+        List<PublicWebsiteResponse.PublicCategory> categories = allCategories.stream()
+                .filter(category -> category.getParent() == null)
                 .map(parent -> {
-                    List<PublicWebsiteResponse.PublicCategory> subcategories = categoryRepository
-                            .findByParentId(parent.getId()).stream()
-                            .map(sub -> new PublicWebsiteResponse.PublicCategory(
-                                    sub.getId().toString(), sub.getName(), publicItemsOf(website.getId(), sub.getId()), List.of()))
-                            .toList();
+                    List<PublicWebsiteResponse.PublicCategory> subcategories =
+                            subcategoriesByParent.getOrDefault(parent.getId(), List.of()).stream()
+                                    .map(sub -> new PublicWebsiteResponse.PublicCategory(
+                                            sub.getId().toString(), sub.getName(),
+                                            itemsByCategory.getOrDefault(sub.getId(), List.of()), List.of()))
+                                    .toList();
                     return new PublicWebsiteResponse.PublicCategory(
                             parent.getId().toString(), parent.getName(),
-                            publicItemsOf(website.getId(), parent.getId()), subcategories);
+                            itemsByCategory.getOrDefault(parent.getId(), List.of()), subcategories);
                 })
                 .toList();
 
@@ -214,20 +244,45 @@ public class PublicWebsiteService {
                 content, profile, hours, categories, areas, services, galleryUrls, seo, sections, theme, projects);
     }
 
-    /** The public-safe, non-trashed items of one category, with their sizes/add-ons/box variants resolved. */
-    private List<PublicMenuItem> publicItemsOf(UUID websiteId, UUID categoryId) {
-        return menuItemRepository.findByWebsiteIdAndCategoryIdAndTrashedAtIsNull(websiteId, categoryId)
-                .stream()
-                .map(item -> {
-                    var sizes = sizeVariantRepository.findByMenuItemId(item.getId());
-                    var groups = addonGroupRepository.findByMenuItemId(item.getId());
-                    Map<UUID, List<Addon>> addonsByGroup = new HashMap<>();
-                    for (AddonGroup g : groups) {
-                        addonsByGroup.put(g.getId(), addonRepository.findByAddonGroupId(g.getId()));
-                    }
-                    var boxVariants = boxVariantRepository.findByMenuItemId(item.getId());
-                    return PublicMenuItem.from(item, sizes, groups, addonsByGroup, boxVariants);
-                })
-                .toList();
+    /**
+     * Every public-safe item on the website, grouped by category id, with its
+     * sizes, add-on groups, add-ons and box variants already attached.
+     *
+     * Five queries total regardless of menu size. The previous version took the
+     * category id and resolved each item's options one item at a time, so cost
+     * grew with the number of items rather than staying flat.
+     */
+    private Map<UUID, List<PublicMenuItem>> publicItemsByCategory(UUID websiteId) {
+        List<MenuItem> items = menuItemRepository.findByWebsiteIdAndTrashedAtIsNull(websiteId);
+        if (items.isEmpty()) {
+            return Map.of();
+        }
+
+        List<UUID> itemIds = items.stream().map(MenuItem::getId).toList();
+
+        Map<UUID, List<SizeVariant>> sizesByItem = sizeVariantRepository.findByMenuItemIdIn(itemIds).stream()
+                .collect(Collectors.groupingBy(size -> size.getMenuItem().getId()));
+        Map<UUID, List<BoxVariant>> boxesByItem = boxVariantRepository.findByMenuItemIdIn(itemIds).stream()
+                .collect(Collectors.groupingBy(box -> box.getMenuItem().getId()));
+
+        List<AddonGroup> groups = addonGroupRepository.findByMenuItemIdIn(itemIds);
+        Map<UUID, List<AddonGroup>> groupsByItem = groups.stream()
+                .collect(Collectors.groupingBy(group -> group.getMenuItem().getId()));
+        // Skipped entirely when nothing has add-ons: findByAddonGroupIdIn(empty)
+        // would be a query returning nothing.
+        Map<UUID, List<Addon>> addonsByGroup = groups.isEmpty()
+                ? Map.of()
+                : addonRepository.findByAddonGroupIdIn(groups.stream().map(AddonGroup::getId).toList()).stream()
+                        .collect(Collectors.groupingBy(addon -> addon.getAddonGroup().getId()));
+
+        return items.stream().collect(Collectors.groupingBy(
+                item -> item.getCategory().getId(),
+                Collectors.mapping(item -> PublicMenuItem.from(
+                        item,
+                        sizesByItem.getOrDefault(item.getId(), List.of()),
+                        groupsByItem.getOrDefault(item.getId(), List.of()),
+                        addonsByGroup,
+                        boxesByItem.getOrDefault(item.getId(), List.of())), Collectors.toList())));
     }
+
 }

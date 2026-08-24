@@ -27,13 +27,17 @@ public class PublicWebsiteController {
 
     @GetMapping("/websites/{slug}")
     public ApiResponse<PublicWebsiteEnvelope> getBySlug(@PathVariable String slug, HttpServletRequest request) {
-        var envelope = publicWebsiteService.getBySlug(slug);
+        // One slug lookup, not two: the payload and the id the visit is
+        // attributed to come back together.
+        var lookup = publicWebsiteService.lookupBySlug(slug);
 
         // BR-AN-002: every visit is counted, regardless of who's viewing or the site's status.
-        publicWebsiteService.findWebsiteIdBySlug(slug).ifPresent(websiteId -> analyticsService.recordPageView(
-                websiteId, request.getHeader("Referer"), AnalyticsService.classifyDevice(request.getHeader("User-Agent"))));
+        if (lookup.websiteId() != null) {
+            analyticsService.recordPageView(lookup.websiteId(), request.getHeader("Referer"),
+                    AnalyticsService.classifyDevice(request.getHeader("User-Agent")));
+        }
 
-        return ApiResponse.ok(envelope);
+        return ApiResponse.ok(lookup.envelope());
     }
 
     @PostMapping("/websites/{slug}/items/{itemId}/view")
