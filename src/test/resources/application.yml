@@ -43,6 +43,7 @@ dbwb:
     account-deletion-disable-window-days: 30
     website-trash-retention-days: 30
     menu-item-trash-retention-days: 7
+    analytics-event-retention-days: 365
     website-public-load-target-seconds: 3
     email-verification-token-ttl-hours: 24
     password-reset-token-ttl-minutes: 30
@@ -59,6 +60,7 @@ dbwb:
     registration:       { limit: 5,   window-minutes: 60 }
     password-reset:     { limit: 5,   window-minutes: 60 }
     ai-suggestions:     { limit: 30,  window-minutes: 60 }
+    uploads:            { limit: 100, window-minutes: 60 }
     public-item-view:   { limit: 60,  window-minutes: 1 }
     public-page-view:   { limit: 240, window-minutes: 1 }
 

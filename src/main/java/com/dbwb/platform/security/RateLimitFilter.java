@@ -56,6 +56,7 @@ public class RateLimitFilter extends OncePerRequestFilter {
             new Rule("POST", "/api/auth/register", RateLimitProperties::getRegistration, false, "registration"),
             new Rule("POST", "/api/auth/password-reset/request", RateLimitProperties::getPasswordReset, false, "password-reset"),
             new Rule("POST", "/api/ai/", RateLimitProperties::getAiSuggestions, true, "ai"),
+            new Rule("POST", "/api/uploads/", RateLimitProperties::getUploads, true, "uploads"),
             new Rule("POST", "/api/public/websites/", RateLimitProperties::getPublicItemView, false, "item-view"),
             new Rule("GET", "/api/public/websites/", RateLimitProperties::getPublicPageView, false, "page-view"));
 

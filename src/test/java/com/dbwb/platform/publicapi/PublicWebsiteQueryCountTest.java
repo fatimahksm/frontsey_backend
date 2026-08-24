@@ -70,6 +70,13 @@ class PublicWebsiteQueryCountTest {
         String smallSlug = seedMenu(2);
         String largeSlug = seedMenu(10);
 
+        // Warm up first. The very first assembly in a context also prepares
+        // statements Hibernate then reuses, so measuring it makes the result
+        // depend on whether this class ran first in the suite - which is how
+        // this test managed to fail in a full run and pass on its own.
+        publicWebsiteService.getBySlug(smallSlug);
+        publicWebsiteService.getBySlug(largeSlug);
+
         // Measured: 15 and 15 after the fix. Before it, 20 and 52 - four more
         // queries for every item added.
         long smallMenuQueries = queriesToAssemble(smallSlug);

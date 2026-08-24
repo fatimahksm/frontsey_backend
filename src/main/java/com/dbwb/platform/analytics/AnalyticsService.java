@@ -5,6 +5,7 @@ import com.dbwb.platform.analytics.entity.AnalyticsEvent;
 import com.dbwb.platform.analytics.entity.AnalyticsEventType;
 import com.dbwb.platform.analytics.entity.DeviceType;
 import com.dbwb.platform.analytics.repository.AnalyticsEventRepository;
+import com.dbwb.platform.common.config.BusinessRuleProperties;
 import com.dbwb.platform.common.exception.BusinessRuleViolationException;
 import com.dbwb.platform.manager.entity.Permission;
 import com.dbwb.platform.menu.repository.MenuItemRepository;
@@ -15,6 +16,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Instant;
+import java.time.temporal.ChronoUnit;
 import java.time.LocalDate;
 import java.time.ZoneOffset;
 import java.util.ArrayList;
@@ -31,16 +33,37 @@ public class AnalyticsService {
     private final MenuItemRepository menuItemRepository;
     private final WebsiteAccessGuard accessGuard;
     private final SubscriptionQueryService subscriptionQueryService;
+    private final BusinessRuleProperties businessRules;
 
     public AnalyticsService(
             AnalyticsEventRepository repository,
             MenuItemRepository menuItemRepository,
             WebsiteAccessGuard accessGuard,
-            SubscriptionQueryService subscriptionQueryService) {
+            SubscriptionQueryService subscriptionQueryService,
+            BusinessRuleProperties businessRules) {
         this.repository = repository;
         this.menuItemRepository = menuItemRepository;
         this.accessGuard = accessGuard;
         this.subscriptionQueryService = subscriptionQueryService;
+        this.businessRules = businessRules;
+    }
+
+    /**
+     * Discards events past the retention window.
+     *
+     * The table had none: a row per visit and per item view, kept forever, on
+     * a path with no other bound. Retention is configured rather than fixed
+     * here (dbwb.business-rules.analytics-event-retention-days), and a value of
+     * zero or less disables the purge entirely rather than deleting everything
+     * - a missing setting must not silently destroy a customer's history.
+     */
+    @Transactional
+    public int purgeExpiredEvents() {
+        int retentionDays = businessRules.getAnalyticsEventRetentionDays();
+        if (retentionDays <= 0) {
+            return 0;
+        }
+        return repository.deleteOlderThan(Instant.now().minus(retentionDays, ChronoUnit.DAYS));
     }
 
     /** BR-AN-002: every visit is counted, including Owner/Manager traffic - no exclusion in MVP. */

@@ -60,6 +60,7 @@ dbwb:
     account-deletion-disable-window-days: 30  # BR-AUTH-006
     website-trash-retention-days: 30          # BR-DATA-004
     menu-item-trash-retention-days: 7         # BR-MENU-011
+    analytics-event-retention-days: 365       # raw events discarded past this; 0 disables the purge
     website-public-load-target-seconds: 3     # BR-NFR-001
     email-verification-token-ttl-hours: 24    # BR-AUTH-002
     password-reset-token-ttl-minutes: 30      # BR-AUTH-004
@@ -76,6 +77,7 @@ dbwb:
     registration:       { limit: 5,   window-minutes: 60 }
     password-reset:     { limit: 5,   window-minutes: 60 }
     ai-suggestions:     { limit: 30,  window-minutes: 60 }
+    uploads:            { limit: 100, window-minutes: 60 }
     public-item-view:   { limit: 60,  window-minutes: 1 }
     public-page-view:   { limit: 240, window-minutes: 1 }
 

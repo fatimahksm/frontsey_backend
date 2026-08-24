@@ -28,6 +28,17 @@ public class BusinessRuleProperties {
     /** BR-MENU-011: days a deleted menu item is restorable before permanent deletion. */
     private int menuItemTrashRetentionDays;
 
+    /**
+     * Days an individual analytics event is kept before it is discarded.
+     *
+     * The table had no retention at all: a row per visit and per item view,
+     * written forever. The dashboard's default range is 30 days and its widest
+     * export is bounded by whatever range the owner asks for, so keeping a
+     * year of raw events covers every question the product can currently ask
+     * while stopping the table growing without limit.
+     */
+    private int analyticsEventRetentionDays;
+
     /** BR-NFR-001: target public page load time, used only for monitoring/alerting thresholds. */
     private int websitePublicLoadTargetSeconds;
 
@@ -45,6 +56,14 @@ public class BusinessRuleProperties {
 
     /** BR-MGR-007: days a manager invitation stays PENDING before it auto-expires. */
     private int managerInvitationExpiryDays;
+
+    public int getAnalyticsEventRetentionDays() {
+        return analyticsEventRetentionDays;
+    }
+
+    public void setAnalyticsEventRetentionDays(int analyticsEventRetentionDays) {
+        this.analyticsEventRetentionDays = analyticsEventRetentionDays;
+    }
 
     public int getSubscriptionTrialDays() {
         return subscriptionTrialDays;

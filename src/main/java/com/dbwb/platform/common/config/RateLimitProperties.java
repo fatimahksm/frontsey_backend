@@ -28,6 +28,14 @@ public class RateLimitProperties {
     /** Per account. Each call spends real money at OpenRouter, so this is a billing control as much as an abuse one. */
     private Policy aiSuggestions = new Policy(30, 60);
 
+    /**
+     * Per account. Any authenticated account could previously upload without
+     * limit, and the files land on disk with no owner recorded and no quota, so
+     * one account could fill the volume. Set well above a real editing session
+     * - filling a gallery is a burst of uploads - while still bounding a script.
+     */
+    private Policy uploads = new Policy(100, 60);
+
     /** Per IP. Public and unauthenticated: without a ceiling anyone can inflate a site's numbers and flood analytics_events. */
     private Policy publicItemView = new Policy(60, 1);
 
@@ -107,6 +115,14 @@ public class RateLimitProperties {
 
     public void setAiSuggestions(Policy aiSuggestions) {
         this.aiSuggestions = aiSuggestions;
+    }
+
+    public Policy getUploads() {
+        return uploads;
+    }
+
+    public void setUploads(Policy uploads) {
+        this.uploads = uploads;
     }
 
     public Policy getPublicItemView() {

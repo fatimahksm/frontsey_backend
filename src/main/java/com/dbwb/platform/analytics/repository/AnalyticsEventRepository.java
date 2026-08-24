@@ -3,6 +3,7 @@ package com.dbwb.platform.analytics.repository;
 import com.dbwb.platform.analytics.entity.AnalyticsEvent;
 import com.dbwb.platform.analytics.entity.AnalyticsEventType;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
@@ -54,6 +55,16 @@ public interface AnalyticsEventRepository extends JpaRepository<AnalyticsEvent, 
             group by function('date', e.createdAt) order by function('date', e.createdAt)
             """)
     List<KeyCount> visitsByDay(@Param("websiteId") UUID websiteId, @Param("from") Instant from, @Param("to") Instant to);
+
+    /**
+     * Drops events older than the retention window. A bulk delete rather than
+     * loading and removing entities: this can be hundreds of thousands of rows
+     * on a busy platform, and none of them need to pass through the persistence
+     * context to be discarded.
+     */
+    @Modifying
+    @Query("delete from AnalyticsEvent e where e.createdAt < :before")
+    int deleteOlderThan(@Param("before") Instant before);
 
     /** Generic key -> count projection shared by every grouped analytics query above. */
     interface KeyCount {
