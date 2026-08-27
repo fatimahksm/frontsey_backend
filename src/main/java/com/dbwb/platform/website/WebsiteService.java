@@ -310,14 +310,24 @@ public class WebsiteService {
             throw new BusinessRuleViolationException("Business profile/contact information is required before publishing.");
         }
 
-        if (website.getTemplateType() == TemplateType.PORTFOLIO) {
-            if (serviceItemRepository.countByWebsiteId(website.getId()) == 0) {
-                throw new BusinessRuleViolationException("At least one service is required before publishing.");
+        // A switch rather than "portfolio or else menu": that else meant any new
+        // template type silently inherited the menu's rule and demanded a menu
+        // category before it could publish.
+        switch (website.getTemplateType()) {
+            case PORTFOLIO -> {
+                if (serviceItemRepository.countByWebsiteId(website.getId()) == 0) {
+                    throw new BusinessRuleViolationException("At least one service is required before publishing.");
+                }
             }
-        } else {
-            long categoryCount = categoryRepository.countByWebsiteId(website.getId());
-            if (categoryCount == 0) {
-                throw new BusinessRuleViolationException("At least one menu category and item is required before publishing.");
+            case EVENTS -> {
+                // Nothing beyond the name and contact details checked above. An
+                // invitation with only a date and a photograph is complete; the
+                // running order and the gallery are both genuinely optional.
+            }
+            case MENU_ORDERING -> {
+                if (categoryRepository.countByWebsiteId(website.getId()) == 0) {
+                    throw new BusinessRuleViolationException("At least one menu category and item is required before publishing.");
+                }
             }
         }
 

@@ -37,7 +37,14 @@ public enum LayoutVariant {
     /** Renders "Brand / Product" - a loud front page for something you made: story, featured items, social links, heavy type. For small businesses, creators, studios, shops. */
     PORTFOLIO_BRAND(TemplateType.PORTFOLIO, true),
     /** Renders "Freelancer / Services" - built to get you booked: offers and prices, client proof, FAQ, a contact button never far away. For coaches, marketers, trainers, tutors. */
-    PORTFOLIO_SERVICES(TemplateType.PORTFOLIO, true);
+    PORTFOLIO_SERVICES(TemplateType.PORTFOLIO, true),
+
+    /**
+     * One occasion, told in order: who and what, when and where, the running
+     * order of the day, and the photographs afterwards. Display-only - an
+     * invitation has nothing to sell.
+     */
+    EVENTS_CELEBRATION(TemplateType.EVENTS, true);
 
     private final TemplateType templateType;
     private final boolean displayOnly;
@@ -62,6 +69,10 @@ public enum LayoutVariant {
     }
 
     public static LayoutVariant defaultFor(TemplateType templateType) {
-        return templateType == TemplateType.PORTFOLIO ? PORTFOLIO_PROFESSIONAL : MENU_CLASSIC;
+        return switch (templateType) {
+            case PORTFOLIO -> PORTFOLIO_PROFESSIONAL;
+            case EVENTS -> EVENTS_CELEBRATION;
+            case MENU_ORDERING -> MENU_CLASSIC;
+        };
     }
 }

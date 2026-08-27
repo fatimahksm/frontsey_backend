@@ -1,6 +1,8 @@
 package com.dbwb.platform.publicapi;
 
 import com.dbwb.platform.delivery.repository.DeliveryAreaRepository;
+import com.dbwb.platform.events.repository.EventDetailsRepository;
+import com.dbwb.platform.events.repository.EventScheduleEntryRepository;
 import com.dbwb.platform.gallery.repository.GalleryImageRepository;
 import com.dbwb.platform.menu.entity.Addon;
 import com.dbwb.platform.menu.entity.AddonGroup;
@@ -63,6 +65,8 @@ public class PublicWebsiteService {
     private final PageSectionRepository pageSectionRepository;
     private final ThemeConfigValidator themeConfigValidator;
     private final PortfolioProjectRepository portfolioProjectRepository;
+    private final EventDetailsRepository eventDetailsRepository;
+    private final EventScheduleEntryRepository eventScheduleEntryRepository;
 
     public PublicWebsiteService(
             BusinessWebsiteRepository websiteRepository,
@@ -80,7 +84,9 @@ public class PublicWebsiteService {
             ServiceItemRepository serviceItemRepository,
             PageSectionRepository pageSectionRepository,
             ThemeConfigValidator themeConfigValidator,
-            PortfolioProjectRepository portfolioProjectRepository) {
+            PortfolioProjectRepository portfolioProjectRepository,
+            EventDetailsRepository eventDetailsRepository,
+            EventScheduleEntryRepository eventScheduleEntryRepository) {
         this.websiteRepository = websiteRepository;
         this.profileRepository = profileRepository;
         this.openingHoursRepository = openingHoursRepository;
@@ -97,6 +103,8 @@ public class PublicWebsiteService {
         this.pageSectionRepository = pageSectionRepository;
         this.themeConfigValidator = themeConfigValidator;
         this.portfolioProjectRepository = portfolioProjectRepository;
+        this.eventDetailsRepository = eventDetailsRepository;
+        this.eventScheduleEntryRepository = eventScheduleEntryRepository;
     }
 
     @Transactional(readOnly = true)
@@ -223,6 +231,20 @@ public class PublicWebsiteService {
                         PortfolioProjectResponse.splitTags(p.getTags()), p.getImageUrl(), p.getLiveUrl(), p.getRepoUrl()))
                 .toList();
 
+        // Null on every non-EVENTS site, and on an EVENTS site nobody has filled
+        // in yet - the template renders whatever is there and hides the rest.
+        PublicWebsiteResponse.PublicEvent event = eventDetailsRepository.findByWebsiteId(website.getId())
+                .map(details -> new PublicWebsiteResponse.PublicEvent(
+                        details.getEventDate(), details.getStartTime(), details.getEndTime(),
+                        details.getVenueName(), details.getDressCode(), details.getRsvpBy(), details.getNote()))
+                .orElse(null);
+
+        List<PublicWebsiteResponse.PublicScheduleEntry> schedule = eventScheduleEntryRepository
+                .findByWebsiteIdOrderBySortOrder(website.getId()).stream()
+                .map(entry -> new PublicWebsiteResponse.PublicScheduleEntry(
+                        entry.getId().toString(), entry.getTime(), entry.getTitle(), entry.getDetail()))
+                .toList();
+
         // Phase 3: every website has an *effective* theme, whether it picked a preset or is building from
         // scratch - re-validated defensively here since the column is still free-text TEXT at the DB level.
         // The website's own overrides win over the preset it started from, and
@@ -241,7 +263,8 @@ public class PublicWebsiteService {
         return new PublicWebsiteResponse(
                 website.getBusinessName(), website.getSlug(), website.getPageMode(), website.getTemplateType(),
                 website.getEffectiveLayoutVariant(), website.getOrderingMode(), website.getPrimaryLanguage(), website.getCurrency(),
-                content, profile, hours, categories, areas, services, galleryUrls, seo, sections, theme, projects);
+                content, profile, hours, categories, areas, services, galleryUrls, seo, sections, theme, projects,
+                event, schedule);
     }
 
     /**
