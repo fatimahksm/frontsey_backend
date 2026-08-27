@@ -24,6 +24,7 @@ import com.dbwb.platform.website.entity.OrderingMode;
 import com.dbwb.platform.website.entity.PageMode;
 import com.dbwb.platform.website.entity.TemplateType;
 import com.dbwb.platform.website.entity.WebsiteStatus;
+import com.dbwb.platform.website.dto.CreateWebsiteRequest;
 import com.dbwb.platform.website.dto.UpdateDraftContentRequest;
 import com.dbwb.platform.website.repository.BusinessWebsiteRepository;
 import org.junit.jupiter.api.BeforeEach;
@@ -42,6 +43,10 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
+import static org.mockito.Mockito.doThrow;
+import static org.mockito.Mockito.never;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.when;
 
 /**
@@ -66,6 +71,7 @@ class WebsiteServiceTest {
     @Mock private PublicWebsiteService publicWebsiteService;
     @Mock private ManagerAccessRepository managerAccessRepository;
     @Mock private com.dbwb.platform.theme.ThemeConfigValidator themeConfigValidator;
+    @Mock private com.dbwb.platform.plan.TemplateAvailability templateAvailability;
 
     private WebsiteService websiteService;
 
@@ -78,7 +84,8 @@ class WebsiteServiceTest {
         websiteService = new WebsiteService(
                 websiteRepository, themeRepository, accountRepository, profileRepository, categoryRepository,
                 serviceItemRepository, slugGenerator, accessGuard, subscriptionQueryService, subscriptionService,
-                auditService, publicWebsiteService, managerAccessRepository, themeConfigValidator);
+                auditService, publicWebsiteService, managerAccessRepository, themeConfigValidator,
+                templateAvailability);
 
         website = TestEntities.withId(new BusinessWebsite(), websiteId);
         website.setBusinessName("Test Business");
@@ -292,5 +299,51 @@ class WebsiteServiceTest {
             assertThat(a.role()).isEqualTo(com.dbwb.platform.website.dto.AccessRole.MANAGER);
             assertThat(a.permissions()).containsExactly(Permission.VIEW_ANALYTICS);
         });
+    }
+
+    @Test
+    void refusesALayoutTheAdminHasWithdrawn() {
+        website.setTemplateType(TemplateType.PORTFOLIO);
+        website.setLayoutVariant(LayoutVariant.PORTFOLIO_PROFESSIONAL);
+        when(accessGuard.requirePermission(eq(websiteId), eq(owner), any())).thenReturn(website);
+        doThrow(new BusinessRuleViolationException("That template is not available to choose right now. Pick another one."))
+                .when(templateAvailability).requireOffered(LayoutVariant.PORTFOLIO_VISUAL);
+
+        assertThatThrownBy(() -> websiteService.updateLayoutVariant(websiteId, owner, LayoutVariant.PORTFOLIO_VISUAL))
+                .isInstanceOf(BusinessRuleViolationException.class)
+                .hasMessageContaining("not available to choose");
+
+        assertThat(website.getLayoutVariant()).isEqualTo(LayoutVariant.PORTFOLIO_PROFESSIONAL);
+    }
+
+    @Test
+    void doesNotTrapAWebsiteAlreadyOnAWithdrawnLayout() {
+        // Withdrawing a template must not mean the sites already on it can never
+        // save this screen again. Re-selecting what they are already on is
+        // allowed, and never consults availability at all.
+        website.setTemplateType(TemplateType.PORTFOLIO);
+        website.setLayoutVariant(LayoutVariant.PORTFOLIO_VISUAL);
+        when(accessGuard.requirePermission(eq(websiteId), eq(owner), any())).thenReturn(website);
+
+        websiteService.updateLayoutVariant(websiteId, owner, LayoutVariant.PORTFOLIO_VISUAL);
+
+        assertThat(website.getLayoutVariant()).isEqualTo(LayoutVariant.PORTFOLIO_VISUAL);
+        verify(templateAvailability, never()).requireOffered(any());
+    }
+
+    @Test
+    void refusesToCreateAKindOfWebsiteWithNothingOnOffer() {
+        // Otherwise the new website falls back to LayoutVariant.defaultFor(),
+        // which may itself be withdrawn - creating it straight onto something
+        // the owner was never allowed to pick.
+        doThrow(new BusinessRuleViolationException("No templates of that kind are available right now."))
+                .when(templateAvailability).requireAnyOffered(TemplateType.PORTFOLIO);
+
+        assertThatThrownBy(() -> websiteService.create(owner,
+                new CreateWebsiteRequest("A Studio", PageMode.MULTI_PAGE, TemplateType.PORTFOLIO, null)))
+                .isInstanceOf(BusinessRuleViolationException.class)
+                .hasMessageContaining("No templates of that kind");
+
+        verify(websiteRepository, never()).save(any());
     }
 }

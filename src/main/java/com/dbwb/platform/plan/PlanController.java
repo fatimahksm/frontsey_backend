@@ -4,7 +4,6 @@ import com.dbwb.platform.common.config.BusinessRuleProperties;
 import com.dbwb.platform.common.dto.ApiResponse;
 import com.dbwb.platform.common.exception.ResourceNotFoundException;
 import com.dbwb.platform.plan.dto.TemplatePriceResponse;
-import com.dbwb.platform.plan.entity.TemplatePrice;
 import com.dbwb.platform.plan.repository.TemplatePriceRepository;
 import com.dbwb.platform.website.entity.LayoutVariant;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -24,12 +23,15 @@ public class PlanController {
     private final PlanRepository planRepository;
     private final TemplatePriceRepository templatePriceRepository;
     private final BusinessRuleProperties businessRules;
+    private final TemplateAvailability templateAvailability;
 
     public PlanController(PlanRepository planRepository, TemplatePriceRepository templatePriceRepository,
-                          BusinessRuleProperties businessRules) {
+                          BusinessRuleProperties businessRules,
+                          TemplateAvailability templateAvailability) {
         this.planRepository = planRepository;
         this.templatePriceRepository = templatePriceRepository;
         this.businessRules = businessRules;
+        this.templateAvailability = templateAvailability;
     }
 
     @GetMapping
@@ -38,13 +40,30 @@ public class PlanController {
     }
 
     /**
+     * The templates currently on offer - what a picker may show.
+     *
+     * The frontend's template list is otherwise a fixed array, which is why
+     * turning a template off used to leave it on display: it was hidden from
+     * pricing and from checkout, but never from the people choosing.
+     */
+    @GetMapping("/templates")
+    public ApiResponse<List<TemplatePriceResponse>> offeredTemplates() {
+        return ApiResponse.ok(templateAvailability.offered().stream()
+                .map(TemplatePriceResponse::from)
+                .toList());
+    }
+
+    /**
      * What one template costs. Public because the subscription screen shows it
      * before anybody has committed to anything, and a price list is not private.
+     *
+     * Deliberately not filtered on active: this answers "what does this website
+     * pay", and a website already on a withdrawn template still has to be able
+     * to see and settle its bill. Use /templates for what is on offer.
      */
     @GetMapping("/template/{layoutVariant}")
     public ApiResponse<TemplatePriceResponse> templatePrice(@PathVariable LayoutVariant layoutVariant) {
         return ApiResponse.ok(templatePriceRepository.findByLayoutVariant(layoutVariant)
-                .filter(TemplatePrice::isActive)
                 .map(TemplatePriceResponse::from)
                 .orElseThrow(() -> new ResourceNotFoundException("That template has no price set.")));
     }

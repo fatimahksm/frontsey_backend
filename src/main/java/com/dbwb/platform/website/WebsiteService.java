@@ -57,6 +57,7 @@ public class WebsiteService {
     private final PublicWebsiteService publicWebsiteService;
     private final ManagerAccessRepository managerAccessRepository;
     private final ThemeConfigValidator themeConfigValidator;
+    private final com.dbwb.platform.plan.TemplateAvailability templateAvailability;
 
     public WebsiteService(
             BusinessWebsiteRepository websiteRepository,
@@ -72,7 +73,8 @@ public class WebsiteService {
             AuditService auditService,
             PublicWebsiteService publicWebsiteService,
             ManagerAccessRepository managerAccessRepository,
-            ThemeConfigValidator themeConfigValidator) {
+            ThemeConfigValidator themeConfigValidator,
+            com.dbwb.platform.plan.TemplateAvailability templateAvailability) {
         this.websiteRepository = websiteRepository;
         this.themeRepository = themeRepository;
         this.accountRepository = accountRepository;
@@ -87,6 +89,7 @@ public class WebsiteService {
         this.publicWebsiteService = publicWebsiteService;
         this.themeConfigValidator = themeConfigValidator;
         this.managerAccessRepository = managerAccessRepository;
+        this.templateAvailability = templateAvailability;
     }
 
     /** Phase 4: a website plus the caller's role/permissions on it, so the frontend can gate UI without re-deriving access logic. */
@@ -98,6 +101,12 @@ public class WebsiteService {
         // NOTE: "number of websites per Business Owner determined by plan" (7.2) is
         // listed as TBD-003 in the BRD (exact feature/limit matrix not finalized).
         // Enforce here once that matrix is approved - intentionally not hardcoded.
+
+        // Nothing of this kind on offer means the layout would fall back to
+        // LayoutVariant.defaultFor(), which may itself be a withdrawn template -
+        // so the website would be created straight onto something the owner was
+        // never allowed to pick.
+        templateAvailability.requireAnyOffered(request.templateType());
 
         BusinessWebsite website = new BusinessWebsite();
         website.setOwner(accountRepository.getReferenceById(caller.accountId()));
@@ -258,6 +267,12 @@ public class WebsiteService {
         if (layoutVariant.templateType() != website.getTemplateType()) {
             throw new BusinessRuleViolationException(
                     "\"" + layoutVariant + "\" is not a valid layout for a " + website.getTemplateType() + " website.");
+        }
+        // Re-selecting the template the website is already on is always allowed:
+        // withdrawing a template must not trap its existing sites, and this call
+        // would then be the only way they could never save this screen again.
+        if (layoutVariant != website.getEffectiveLayoutVariant()) {
+            templateAvailability.requireOffered(layoutVariant);
         }
         website.setLayoutVariant(layoutVariant);
         // Switching to a cart-less layout is itself the "this is a read-only
