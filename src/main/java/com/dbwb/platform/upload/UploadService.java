@@ -7,12 +7,9 @@ import org.springframework.web.multipart.MultipartFile;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.UncheckedIOException;
-import java.nio.file.Files;
-import java.nio.file.Path;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.UUID;
 
 /**
  * Stores owner-uploaded images (logos, cover photos, gallery, menu items,
@@ -30,9 +27,11 @@ public class UploadService {
             "image/gif", ".gif");
 
     private final UploadProperties properties;
+    private final ImageStorage storage;
 
-    public UploadService(UploadProperties properties) {
+    public UploadService(UploadProperties properties, ImageStorage storage) {
         this.properties = properties;
+        this.storage = storage;
     }
 
     public String storeImage(MultipartFile file) {
@@ -68,13 +67,10 @@ public class UploadService {
                 throw new BusinessRuleViolationException("Only JPEG, PNG, WEBP, or GIF images are allowed.");
             }
 
-            Path directory = Path.of(properties.getDirectory());
-            Files.createDirectories(directory);
-
-            String filename = UUID.randomUUID() + EXTENSION_BY_CONTENT_TYPE.get(detectedType);
-            Path destination = directory.resolve(filename);
-            file.transferTo(destination);
-            return filename;
+            // Where it goes is the storage's business - local disk in
+            // development, Cloudflare R2 in production. This method's job ends
+            // at deciding the bytes are acceptable.
+            return storage.store(file.getBytes(), detectedType, EXTENSION_BY_CONTENT_TYPE.get(detectedType));
         } catch (IOException e) {
             throw new UncheckedIOException("Failed to store the uploaded image.", e);
         }
@@ -156,5 +152,10 @@ public class UploadService {
                             .and(8, brand.charAt(0), brand.charAt(1), brand.charAt(2), brand.charAt(3)),
                     HEIF_TYPE);
         }
+    }
+
+    /** Where a visitor loads this key from, or null when the caller should build it from the request. */
+    public String publicUrl(String key) {
+        return storage.publicUrl(key);
     }
 }

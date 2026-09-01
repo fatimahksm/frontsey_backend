@@ -109,8 +109,23 @@ dbwb:
     bootstrap-password: ${ADMIN_BOOTSTRAP_PASSWORD:}
 
   uploads:
+    # local | r2. Local writes to this container's disk: the files vanish when
+    # it is replaced and a second instance cannot see them, so it is for
+    # development only. r2 is Cloudflare R2 - the files outlive the container,
+    # every instance sees the same ones, and a public bucket is served from
+    # Cloudflare's network, which is the CDN as well.
+    storage: ${UPLOAD_STORAGE:local}
     directory: ${UPLOAD_DIRECTORY:uploads}
     max-file-size-mb: ${UPLOAD_MAX_FILE_SIZE_MB:5}
+    r2:
+      account-id: ${R2_ACCOUNT_ID:}
+      bucket: ${R2_BUCKET:}
+      access-key-id: ${R2_ACCESS_KEY_ID:}
+      secret-access-key: ${R2_SECRET_ACCESS_KEY:}
+      # The bucket's public address - its r2.dev URL, or a custom domain on it.
+      # Required whenever storage is r2: without it an upload succeeds and then
+      # shows as a broken picture on the live site.
+      public-base-url: ${R2_PUBLIC_BASE_URL:}
 
   ai:
     openrouter-api-key: ${OPENROUTER_API_KEY:}

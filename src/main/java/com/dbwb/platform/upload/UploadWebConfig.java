@@ -1,5 +1,6 @@
 package com.dbwb.platform.upload;
 
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.http.CacheControl;
 import org.springframework.web.servlet.config.annotation.ResourceHandlerRegistry;
@@ -11,8 +12,15 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Duration;
 
-/** Serves uploaded images back out at /uploads/** - see SecurityConfig for why that path is public. */
+/**
+ * Serves uploaded images back out at /uploads/** - see SecurityConfig for why
+ * that path is public.
+ *
+ * Only registered when this application is the one holding the files. Under R2
+ * they are served by Cloudflare and nothing here should claim that path.
+ */
 @Configuration
+@ConditionalOnProperty(name = "dbwb.uploads.storage", havingValue = "local", matchIfMissing = true)
 public class UploadWebConfig implements WebMvcConfigurer {
 
     private final UploadProperties properties;

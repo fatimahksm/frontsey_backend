@@ -22,11 +22,18 @@ public class UploadController {
     /** Any authenticated account may upload - the resulting URL is just pasted into whichever field the caller owns; tenant checks happen when that field is saved. */
     @PostMapping("/images")
     public ApiResponse<UploadResponse> uploadImage(@RequestParam("file") MultipartFile file, HttpServletRequest request) {
-        String filename = uploadService.storeImage(file);
-        String url = UriComponentsBuilder.fromHttpUrl(request.getRequestURL().toString())
-                .replacePath("/uploads/" + filename)
-                .replaceQuery(null)
-                .toUriString();
+        String key = uploadService.storeImage(file);
+
+        // Object storage knows its own public address. Local disk does not -
+        // those files are served by this application, so the right host is
+        // whichever one this request arrived on, and only here knows that.
+        String url = uploadService.publicUrl(key);
+        if (url == null) {
+            url = UriComponentsBuilder.fromHttpUrl(request.getRequestURL().toString())
+                    .replacePath("/uploads/" + key)
+                    .replaceQuery(null)
+                    .toUriString();
+        }
         return ApiResponse.ok(new UploadResponse(url));
     }
 

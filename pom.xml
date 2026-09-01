@@ -20,6 +20,8 @@
     <properties>
         <java.version>21</java.version>
         <jjwt.version>0.12.6</jjwt.version>
+        <awssdk.version>2.29.52</awssdk.version>
+        <s3mock.version>3.12.0</s3mock.version>
     </properties>
 
     <dependencies>
@@ -85,6 +87,22 @@
             <artifactId>spring-boot-starter-mail</artifactId>
         </dependency>
 
+        <!-- Object storage for uploaded images. Cloudflare R2 speaks the S3 API,
+             so this is the S3 SDK pointed at an R2 endpoint - no R2-specific
+             client, and the same code works against any S3-compatible store. -->
+        <dependency>
+            <groupId>software.amazon.awssdk</groupId>
+            <artifactId>s3</artifactId>
+            <version>${awssdk.version}</version>
+            <exclusions>
+                <!-- Netty comes in for the async client, which is not used here. -->
+                <exclusion>
+                    <groupId>software.amazon.awssdk</groupId>
+                    <artifactId>netty-nio-client</artifactId>
+                </exclusion>
+            </exclusions>
+        </dependency>
+
         <!-- Utility -->
         <dependency>
             <groupId>org.projectlombok</groupId>
@@ -106,6 +124,14 @@
         <dependency>
             <groupId>com.h2database</groupId>
             <artifactId>h2</artifactId>
+            <scope>test</scope>
+        </dependency>
+        <!-- An S3 server in-process, so the R2 path is tested against the real
+             SDK talking real S3 rather than against a mocked client. -->
+        <dependency>
+            <groupId>com.adobe.testing</groupId>
+            <artifactId>s3mock-junit5</artifactId>
+            <version>${s3mock.version}</version>
             <scope>test</scope>
         </dependency>
     </dependencies>

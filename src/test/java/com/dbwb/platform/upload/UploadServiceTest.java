@@ -24,7 +24,7 @@ class UploadServiceTest {
         UploadProperties properties = new UploadProperties();
         properties.setDirectory(tempDir.toString());
         properties.setMaxFileSizeMb(1);
-        uploadService = new UploadService(properties);
+        uploadService = new UploadService(properties, new LocalDiskImageStorage(properties));
     }
 
     /** Real leading bytes for each format - what the service now actually looks at. */

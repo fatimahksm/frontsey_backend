@@ -76,6 +76,10 @@ dbwb:
     bootstrap-password:
 
   uploads:
+    # Local, so the suite never needs credentials or a network. R2ImageStorage
+    # is covered by R2ImageStorageTest, which runs the real SDK against an
+    # in-process S3 server.
+    storage: local
     # Under target/, so a test that does write a file leaves nothing in the
     # working tree. UploadServiceTest still uses its own @TempDir.
     directory: target/test-uploads
