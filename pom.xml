@@ -87,6 +87,18 @@
             <artifactId>spring-boot-starter-mail</artifactId>
         </dependency>
 
+        <!-- Caching, for the assembled public page. Caffeine rather than the
+             default simple map: this needs an entry to expire on its own and a
+             bound on how many it keeps. -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-cache</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>com.github.ben-manes.caffeine</groupId>
+            <artifactId>caffeine</artifactId>
+        </dependency>
+
         <!-- Object storage for uploaded images. Cloudflare R2 speaks the S3 API,
              so this is the S3 SDK pointed at an R2 endpoint - no R2-specific
              client, and the same code works against any S3-compatible store. -->

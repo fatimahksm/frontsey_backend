@@ -2,6 +2,7 @@ package com.dbwb.platform.website;
 
 import com.dbwb.platform.account.entity.Role;
 import com.dbwb.platform.audit.AuditService;
+import com.dbwb.platform.common.config.CacheConfig;
 import com.dbwb.platform.common.exception.BusinessRuleViolationException;
 import com.dbwb.platform.common.exception.ResourceNotFoundException;
 import com.dbwb.platform.manager.entity.InvitationStatus;
@@ -27,6 +28,7 @@ import com.dbwb.platform.website.entity.WebsiteStatus;
 import com.dbwb.platform.website.repository.BusinessWebsiteRepository;
 import com.dbwb.platform.menu.repository.CategoryRepository;
 import com.dbwb.platform.account.repository.AccountRepository;
+import org.springframework.cache.annotation.CacheEvict;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -197,6 +199,17 @@ public class WebsiteService {
      * On success, promotes draft -> published and retains exactly one prior
      * published version (BR-THEME-007).
      */
+    /**
+     * Evicts the public page, on top of the few seconds the cache would have
+     * expired in anyway. Publishing is the one change an owner consciously
+     * waits on - they press it and go and look - so it is worth being exact
+     * about, where an edit to a price can ride the expiry.
+     *
+     * allEntries because the key is the slug and this method has the id; the
+     * cache is small and this happens rarely, so clearing it is cheaper than
+     * carrying a slug around to be precise about.
+     */
+    @CacheEvict(value = CacheConfig.PUBLIC_WEBSITES, allEntries = true)
     @Transactional
     public BusinessWebsite publish(UUID websiteId, AuthenticatedAccount caller) {
         BusinessWebsite website = accessGuard.requirePermission(
@@ -287,6 +300,8 @@ public class WebsiteService {
     }
 
     /** BR-THEME-007: restore the immediately previous published version. */
+    /** Same reasoning as publish: an owner rolling back is watching for it. */
+    @CacheEvict(value = CacheConfig.PUBLIC_WEBSITES, allEntries = true)
     @Transactional
     public BusinessWebsite restorePreviousVersion(UUID websiteId, AuthenticatedAccount caller) {
         BusinessWebsite website = accessGuard.requirePermission(

@@ -1,5 +1,6 @@
 package com.dbwb.platform.publicapi;
 
+import com.dbwb.platform.common.config.CacheConfig;
 import com.dbwb.platform.delivery.repository.DeliveryAreaRepository;
 import com.dbwb.platform.events.repository.EventDetailsRepository;
 import com.dbwb.platform.events.repository.EventScheduleEntryRepository;
@@ -30,6 +31,7 @@ import com.dbwb.platform.website.entity.BusinessWebsite;
 import com.dbwb.platform.website.entity.WebsiteStatus;
 import com.dbwb.platform.website.repository.BusinessWebsiteRepository;
 import com.dbwb.platform.website.repository.SeoMetadataRepository;
+import org.springframework.cache.annotation.Cacheable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -116,7 +118,17 @@ public class PublicWebsiteService {
      * Resolves a slug once and hands back both the payload and the website's
      * id, so a caller that needs to record the visit does not look the same
      * slug up a second time.
+     *
+     * Cached for a few seconds - see CacheConfig for why by expiry rather than
+     * by eviction on every write. A miss is exactly the work this always did;
+     * a hit skips the dozen queries and the JSON assembly entirely.
+     *
+     * Recording the visit is deliberately not in here. It happens in the
+     * controller, so a cached page still counts as a page view - a visit that
+     * hit a warm cache is still a visit, and analytics that only counted cache
+     * misses would quietly undercount by whatever the hit rate happens to be.
      */
+    @Cacheable(CacheConfig.PUBLIC_WEBSITES)
     @Transactional(readOnly = true)
     public PublicWebsiteLookup lookupBySlug(String slug) {
         BusinessWebsite website = websiteRepository.findBySlug(slug).orElse(null);
@@ -132,6 +144,14 @@ public class PublicWebsiteService {
         return new PublicWebsiteLookup(website.getId(), envelope);
     }
 
+    /**
+     * The payload alone, for callers with no visit to attribute.
+     *
+     * Deliberately not annotated: this calls lookupBySlug on itself, and a
+     * self-call does not pass through the caching proxy, so annotating it
+     * would advertise a cache that never gets consulted. Anything on the hot
+     * path should call lookupBySlug directly.
+     */
     @Transactional(readOnly = true)
     public PublicWebsiteEnvelope getBySlug(String slug) {
         return lookupBySlug(slug).envelope();

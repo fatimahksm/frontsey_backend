@@ -20,6 +20,7 @@ import com.dbwb.platform.menu.repository.SizeVariantRepository;
 import com.dbwb.platform.website.entity.BusinessWebsite;
 import com.dbwb.platform.website.entity.PageMode;
 import com.dbwb.platform.website.entity.WebsiteStatus;
+import com.dbwb.platform.common.config.CacheConfig;
 import com.dbwb.platform.website.repository.BusinessWebsiteRepository;
 import jakarta.persistence.EntityManager;
 import org.hibernate.SessionFactory;
@@ -63,6 +64,7 @@ class PublicWebsiteQueryCountTest {
     @Autowired private AddonRepository addonRepository;
     @Autowired private BoxVariantRepository boxVariantRepository;
     @Autowired private EntityManager entityManager;
+    @Autowired private org.springframework.cache.CacheManager cacheManager;
 
     @Test
     @Transactional
@@ -105,8 +107,17 @@ class PublicWebsiteQueryCountTest {
         });
     }
 
-    /** Counts only the queries the assembly itself issues, with the seed data already flushed. */
+    /**
+     * Counts only the queries the assembly itself issues, with the seed data
+     * already flushed.
+     *
+     * The cache is cleared first on purpose. This test exists to measure what
+     * building a page costs, and a warm cache would report zero queries and
+     * pass for entirely the wrong reason - the N+1 could come back and this
+     * would still be green.
+     */
     private long queriesToAssemble(String slug) {
+        cacheManager.getCache(CacheConfig.PUBLIC_WEBSITES).clear();
         entityManager.flush();
         entityManager.clear();
         Statistics statistics = entityManager.getEntityManagerFactory()
