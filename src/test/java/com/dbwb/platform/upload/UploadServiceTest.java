@@ -106,4 +106,49 @@ class UploadServiceTest {
         assertThatThrownBy(() -> uploadService.storeImage(file))
                 .isInstanceOf(BusinessRuleViolationException.class);
     }
+
+    /** ISO-BMFF: four length bytes, "ftyp", then the brand. */
+    private static byte[] isoBmff(String brand) {
+        byte[] header = new byte[]{0, 0, 0, 0x20, 'f', 't', 'y', 'p', 0, 0, 0, 0};
+        for (int i = 0; i < 4; i++) {
+            header[8 + i] = (byte) brand.charAt(i);
+        }
+        return header;
+    }
+
+    @Test
+    void refusesAnIphonePhotoByNameRatherThanReadingOutAList() {
+        // Recognised on purpose. Nothing but Safari renders HEIC, so storing it
+        // would leave a broken picture on a public page - but "Only JPEG, PNG,
+        // WEBP, or GIF" tells the owner nothing about the photo they just took.
+        MockMultipartFile heic = new MockMultipartFile("file", "IMG_0421.HEIC", "image/heic", isoBmff("heic"));
+
+        assertThatThrownBy(() -> uploadService.storeImage(heic))
+                .isInstanceOf(BusinessRuleViolationException.class)
+                .hasMessageContaining("iPhone photo")
+                .hasMessageContaining("converted automatically");
+    }
+
+    @Test
+    void recognisesTheOtherHeifBrandsToo() {
+        for (String brand : new String[]{"heix", "hevc", "mif1", "msf1"}) {
+            assertThatThrownBy(() -> uploadService.storeImage(
+                    new MockMultipartFile("file", "p." + brand, "image/heif", isoBmff(brand))))
+                    .as("brand %s", brand)
+                    .isInstanceOf(BusinessRuleViolationException.class)
+                    .hasMessageContaining("iPhone photo");
+        }
+    }
+
+    @Test
+    void doesNotCallAVideoAnIphonePhoto() {
+        // Every MP4 also has "ftyp" at offset 4, so matching that alone would
+        // have refused a video with a message about photographs.
+        MockMultipartFile video = new MockMultipartFile("file", "clip.mp4", "video/mp4", isoBmff("isom"));
+
+        assertThatThrownBy(() -> uploadService.storeImage(video))
+                .isInstanceOf(BusinessRuleViolationException.class)
+                .hasMessageContaining("JPEG, PNG, WEBP, or GIF")
+                .hasMessageNotContaining("iPhone");
+    }
 }

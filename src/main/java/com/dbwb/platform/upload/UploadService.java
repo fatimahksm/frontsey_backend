@@ -10,6 +10,7 @@ import java.io.UncheckedIOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 
@@ -50,6 +51,19 @@ public class UploadService {
             // /uploads/**, which is public. The bytes decide instead, and the
             // extension comes from what the bytes actually are.
             String detectedType = detectImageType(file);
+            if (HEIF_TYPE.equals(detectedType)) {
+                // Recognised on purpose, and still refused. Nothing but Safari
+                // renders HEIC, so storing one leaves a public page with a
+                // broken picture on it - and decoding it here would mean
+                // libheif on every deployment host. The browser converts it to
+                // JPEG before uploading (lib/images/prepare-upload.ts), so one
+                // arriving here means that did not run: an old browser, or a
+                // client posting to the API directly. Say which, rather than
+                // reading out a list that does not explain anything.
+                throw new BusinessRuleViolationException(
+                        "That looks like an iPhone photo (HEIC), which browsers cannot display. "
+                                + "Upload it from the website and it will be converted automatically.");
+            }
             if (detectedType == null) {
                 throw new BusinessRuleViolationException("Only JPEG, PNG, WEBP, or GIF images are allowed.");
             }
@@ -120,6 +134,9 @@ public class UploadService {
         }
     }
 
+    /** Recognised so it can be refused with a reason, never stored - see storeImage. */
+    private static final String HEIF_TYPE = "image/heif";
+
     private static final Map<Signature, String> SIGNATURES = new LinkedHashMap<>();
 
     static {
@@ -128,5 +145,16 @@ public class UploadService {
         SIGNATURES.put(Signature.at(0, 0x47, 0x49, 0x46, 0x38), "image/gif");
         // WEBP is a RIFF container: "RIFF" then four length bytes then "WEBP".
         SIGNATURES.put(Signature.at(0, 0x52, 0x49, 0x46, 0x46).and(8, 0x57, 0x45, 0x42, 0x50), "image/webp");
+        // HEIC/HEIF is an ISO-BMFF box: four length bytes, then "ftyp", then a
+        // four-character brand. The brand is what has to be checked - "ftyp"
+        // alone is every MP4 as well, and a video refused as "an iPhone photo"
+        // explains nothing. Detected only so the refusal can name it; it is
+        // never stored. See storeImage.
+        for (String brand : List.of("heic", "heix", "hevc", "hevx", "mif1", "msf1")) {
+            SIGNATURES.put(
+                    Signature.at(4, 'f', 't', 'y', 'p')
+                            .and(8, brand.charAt(0), brand.charAt(1), brand.charAt(2), brand.charAt(3)),
+                    HEIF_TYPE);
+        }
     }
 }
