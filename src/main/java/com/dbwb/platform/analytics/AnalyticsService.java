@@ -12,6 +12,7 @@ import com.dbwb.platform.menu.repository.MenuItemRepository;
 import com.dbwb.platform.security.AuthenticatedAccount;
 import com.dbwb.platform.subscription.SubscriptionQueryService;
 import com.dbwb.platform.website.WebsiteAccessGuard;
+import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -66,7 +67,20 @@ public class AnalyticsService {
         return repository.deleteOlderThan(Instant.now().minus(retentionDays, ChronoUnit.DAYS));
     }
 
-    /** BR-AN-002: every visit is counted, including Owner/Manager traffic - no exclusion in MVP. */
+    /**
+     * BR-AN-002: every visit is counted, including Owner/Manager traffic - no
+     * exclusion in MVP.
+     *
+     * Written on a background thread rather than in the request. A visitor
+     * waiting on a page should not also wait on an INSERT nobody is going to
+     * read for days, and an analytics table under load should slow the numbers
+     * down, not the pages.
+     *
+     * Losing the odd row if the process dies mid-write is an accepted trade: a
+     * visit count is a trend, not a ledger. Anything that had to balance would
+     * not belong on this path.
+     */
+    @Async
     @Transactional
     public void recordPageView(UUID websiteId, String referralSource, DeviceType deviceType) {
         AnalyticsEvent event = new AnalyticsEvent();
@@ -77,6 +91,8 @@ public class AnalyticsService {
         repository.save(event);
     }
 
+    /** Same reasoning as recordPageView: off the request, and cheap to lose. */
+    @Async
     @Transactional
     public void recordItemView(UUID websiteId, UUID itemId, DeviceType deviceType) {
         AnalyticsEvent event = new AnalyticsEvent();

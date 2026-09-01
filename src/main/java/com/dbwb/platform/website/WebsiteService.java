@@ -32,6 +32,8 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Instant;
 import java.util.ArrayList;
+import com.dbwb.platform.plan.entity.Plan;
+import java.util.Optional;
 import java.util.List;
 import java.util.Set;
 import java.util.UUID;
@@ -58,6 +60,7 @@ public class WebsiteService {
     private final ManagerAccessRepository managerAccessRepository;
     private final ThemeConfigValidator themeConfigValidator;
     private final com.dbwb.platform.plan.TemplateAvailability templateAvailability;
+    private final com.dbwb.platform.common.config.BusinessRuleProperties businessRules;
 
     public WebsiteService(
             BusinessWebsiteRepository websiteRepository,
@@ -74,7 +77,8 @@ public class WebsiteService {
             PublicWebsiteService publicWebsiteService,
             ManagerAccessRepository managerAccessRepository,
             ThemeConfigValidator themeConfigValidator,
-            com.dbwb.platform.plan.TemplateAvailability templateAvailability) {
+            com.dbwb.platform.plan.TemplateAvailability templateAvailability,
+            com.dbwb.platform.common.config.BusinessRuleProperties businessRules) {
         this.websiteRepository = websiteRepository;
         this.themeRepository = themeRepository;
         this.accountRepository = accountRepository;
@@ -90,6 +94,7 @@ public class WebsiteService {
         this.themeConfigValidator = themeConfigValidator;
         this.managerAccessRepository = managerAccessRepository;
         this.templateAvailability = templateAvailability;
+        this.businessRules = businessRules;
     }
 
     /** Phase 4: a website plus the caller's role/permissions on it, so the frontend can gate UI without re-deriving access logic. */
@@ -98,9 +103,7 @@ public class WebsiteService {
 
     @Transactional
     public BusinessWebsite create(AuthenticatedAccount caller, CreateWebsiteRequest request) {
-        // NOTE: "number of websites per Business Owner determined by plan" (7.2) is
-        // listed as TBD-003 in the BRD (exact feature/limit matrix not finalized).
-        // Enforce here once that matrix is approved - intentionally not hardcoded.
+        requireRoomForAnotherWebsite(caller);
 
         // Nothing of this kind on offer means the layout would fall back to
         // LayoutVariant.defaultFor(), which may itself be a withdrawn template -
@@ -296,6 +299,44 @@ public class WebsiteService {
         website.setPublishedContent(website.getPreviousPublishedContent());
         website.setPreviousPublishedContent(current);
         return website;
+    }
+
+    /**
+     * BRD 7.2: how many websites one owner may have.
+     *
+     * Left unenforced until now - the note here said to add it once the plan
+     * matrix (TBD-003) was approved, and it never was, so creation was
+     * unlimited for anyone with an account. Rather than wait longer for a
+     * decision that has not come, the number is configuration: an owner with no
+     * active plan gets dbwb.business-rules.default-websites-per-owner, and an
+     * owner who holds plans gets the largest maxWebsites among them, so the
+     * matrix takes over the moment it exists. Setting it to zero restores the
+     * old unlimited behaviour.
+     *
+     * Trashed and deleted websites do not count against it - the limit is on
+     * what an owner is running, not on what they have ever made.
+     */
+    private void requireRoomForAnotherWebsite(AuthenticatedAccount caller) {
+        List<BusinessWebsite> live = websiteRepository.findByOwnerId(caller.accountId()).stream()
+                .filter(website -> website.getStatus() != WebsiteStatus.DELETED
+                        && website.getStatus() != WebsiteStatus.TRASHED)
+                .toList();
+
+        int allowance = live.stream()
+                .map(website -> subscriptionQueryService.getActivePlan(website.getId()))
+                .flatMap(Optional::stream)
+                .mapToInt(Plan::getMaxWebsites)
+                .max()
+                .orElse(businessRules.getDefaultWebsitesPerOwner());
+
+        if (allowance <= 0) {
+            return;
+        }
+        if (live.size() >= allowance) {
+            throw new BusinessRuleViolationException(
+                    "Your plan covers " + allowance + " website" + (allowance == 1 ? "" : "s")
+                            + ". Upgrade, or delete one you are no longer using, to add another.");
+        }
     }
 
     private void validateMandatoryPublicationFields(BusinessWebsite website) {

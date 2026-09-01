@@ -72,6 +72,8 @@ class WebsiteServiceTest {
     @Mock private ManagerAccessRepository managerAccessRepository;
     @Mock private com.dbwb.platform.theme.ThemeConfigValidator themeConfigValidator;
     @Mock private com.dbwb.platform.plan.TemplateAvailability templateAvailability;
+    private final com.dbwb.platform.common.config.BusinessRuleProperties businessRules =
+            new com.dbwb.platform.common.config.BusinessRuleProperties();
 
     private WebsiteService websiteService;
 
@@ -85,7 +87,7 @@ class WebsiteServiceTest {
                 websiteRepository, themeRepository, accountRepository, profileRepository, categoryRepository,
                 serviceItemRepository, slugGenerator, accessGuard, subscriptionQueryService, subscriptionService,
                 auditService, publicWebsiteService, managerAccessRepository, themeConfigValidator,
-                templateAvailability);
+                templateAvailability, businessRules);
 
         website = TestEntities.withId(new BusinessWebsite(), websiteId);
         website.setBusinessName("Test Business");
@@ -345,5 +347,64 @@ class WebsiteServiceTest {
                 .hasMessageContaining("No templates of that kind");
 
         verify(websiteRepository, never()).save(any());
+    }
+
+    @Test
+    void refusesAnotherWebsiteOnceTheOwnersAllowanceIsSpent() {
+        // BRD 7.2 / TBD-003. Unenforced until now, so anyone with an account
+        // could create websites without limit.
+        businessRules.setDefaultWebsitesPerOwner(2);
+        when(websiteRepository.findByOwnerId(owner.accountId()))
+                .thenReturn(List.of(liveWebsite(), liveWebsite()));
+
+        assertThatThrownBy(() -> websiteService.create(owner,
+                new CreateWebsiteRequest("A Third", PageMode.MULTI_PAGE, TemplateType.MENU_ORDERING, null)))
+                .isInstanceOf(BusinessRuleViolationException.class)
+                .hasMessageContaining("covers 2 websites");
+
+        verify(websiteRepository, never()).save(any());
+    }
+
+    @Test
+    void doesNotCountTrashedOrDeletedWebsitesAgainstTheAllowance() {
+        // The limit is on what an owner is running, not on everything they have
+        // ever made - otherwise deleting one would not free the slot back up.
+        businessRules.setDefaultWebsitesPerOwner(2);
+        BusinessWebsite trashed = liveWebsite();
+        trashed.setStatus(WebsiteStatus.TRASHED);
+        BusinessWebsite deleted = liveWebsite();
+        deleted.setStatus(WebsiteStatus.DELETED);
+        when(websiteRepository.findByOwnerId(owner.accountId()))
+                .thenReturn(List.of(liveWebsite(), trashed, deleted));
+        when(accountRepository.getReferenceById(owner.accountId())).thenReturn(new com.dbwb.platform.account.entity.Account());
+        when(slugGenerator.generateUniqueSlug(any())).thenReturn("a-second");
+        when(websiteRepository.save(any())).thenAnswer(inv ->
+                TestEntities.withId(inv.getArgument(0), UUID.randomUUID()));
+
+        websiteService.create(owner, new CreateWebsiteRequest("A Second", PageMode.MULTI_PAGE, TemplateType.MENU_ORDERING, null));
+
+        verify(websiteRepository).save(any());
+    }
+
+    @Test
+    void anAllowanceOfZeroMeansNoLimitAtAll() {
+        // The old behaviour, still reachable from config for anyone who wants it.
+        businessRules.setDefaultWebsitesPerOwner(0);
+        when(websiteRepository.findByOwnerId(owner.accountId()))
+                .thenReturn(List.of(liveWebsite(), liveWebsite(), liveWebsite(), liveWebsite()));
+        when(accountRepository.getReferenceById(owner.accountId())).thenReturn(new com.dbwb.platform.account.entity.Account());
+        when(slugGenerator.generateUniqueSlug(any())).thenReturn("another");
+        when(websiteRepository.save(any())).thenAnswer(inv ->
+                TestEntities.withId(inv.getArgument(0), UUID.randomUUID()));
+
+        websiteService.create(owner, new CreateWebsiteRequest("Another", PageMode.MULTI_PAGE, TemplateType.MENU_ORDERING, null));
+
+        verify(websiteRepository).save(any());
+    }
+
+    private BusinessWebsite liveWebsite() {
+        BusinessWebsite existing = TestEntities.withId(new BusinessWebsite(), UUID.randomUUID());
+        existing.setStatus(WebsiteStatus.DRAFT);
+        return existing;
     }
 }

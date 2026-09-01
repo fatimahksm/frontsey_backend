@@ -7,6 +7,20 @@ spring:
     username: ${DB_USERNAME:dbwb_user}
     password: ${DB_PASSWORD:changeme}
     driver-class-name: org.postgresql.Driver
+    hikari:
+      # Sized on purpose rather than left at Hikari's default of 10. A public
+      # page load holds a connection for the whole of its assembly, so ten
+      # caps concurrent visitors at ten regardless of how many request threads
+      # Tomcat has free. Twenty is comfortable for one node against a small
+      # Postgres; raise it with the database's own max_connections in view,
+      # not on its own.
+      maximum-pool-size: ${DB_POOL_SIZE:20}
+      minimum-idle: ${DB_POOL_MIN_IDLE:5}
+      # Fail fast rather than piling up: a request that cannot get a connection
+      # in three seconds should return an error, not hold a thread until the
+      # user gives up.
+      connection-timeout: 3000
+      leak-detection-threshold: 20000
 
   jpa:
     hibernate:
@@ -57,6 +71,7 @@ dbwb:
   business-rules:
     subscription-grace-period-days: 3         # BR-SUB-006
     subscription-trial-days: 10               # free trial opened at first publish
+    default-websites-per-owner: 3             # TBD-003 floor; a paid plan's maxWebsites overrides it, 0 = unlimited
     account-deletion-disable-window-days: 30  # BR-AUTH-006
     website-trash-retention-days: 30          # BR-DATA-004
     menu-item-trash-retention-days: 7         # BR-MENU-011

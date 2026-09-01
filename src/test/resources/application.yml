@@ -40,6 +40,7 @@ dbwb:
   business-rules:
     subscription-grace-period-days: 3
     subscription-trial-days: 10
+    default-websites-per-owner: 3
     account-deletion-disable-window-days: 30
     website-trash-retention-days: 30
     menu-item-trash-retention-days: 7

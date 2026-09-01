@@ -19,6 +19,19 @@ public class BusinessRuleProperties {
     /** Days a website stays publishable on its free trial, opened at first publish. */
     private int subscriptionTrialDays;
 
+    /**
+     * How many websites an owner may have before any of them is on a paid plan.
+     *
+     * BRD 7.2 says the number is "determined by plan", listed as TBD-003, and
+     * the matrix was never settled - so WebsiteService created websites without
+     * any limit at all, which is an open invitation to a script. This is the
+     * floor: an owner with no active plan gets this many. An owner who holds
+     * plans gets the largest maxWebsites among them, which is the plan matrix
+     * doing its job once it exists. Zero or less means no limit, which is the
+     * old behaviour, deliberately still reachable from config.
+     */
+    private int defaultWebsitesPerOwner;
+
     /** BR-AUTH-006: days an account stays disabled (recoverable) before permanent deletion. */
     private int accountDeletionDisableWindowDays;
 
@@ -63,6 +76,14 @@ public class BusinessRuleProperties {
 
     public void setAnalyticsEventRetentionDays(int analyticsEventRetentionDays) {
         this.analyticsEventRetentionDays = analyticsEventRetentionDays;
+    }
+
+    public int getDefaultWebsitesPerOwner() {
+        return defaultWebsitesPerOwner;
+    }
+
+    public void setDefaultWebsitesPerOwner(int defaultWebsitesPerOwner) {
+        this.defaultWebsitesPerOwner = defaultWebsitesPerOwner;
     }
 
     public int getSubscriptionTrialDays() {
