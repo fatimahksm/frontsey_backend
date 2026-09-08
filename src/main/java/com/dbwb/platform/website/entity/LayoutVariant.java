@@ -24,6 +24,17 @@ public enum LayoutVariant {
     MENU_ELEGANT(TemplateType.MENU_ORDERING, true),
     /** Warm, photography-led cafe/bistro style: bold headline hero, real combo-box deals, card-grid menu with sticky category filters. */
     MENU_BISTRO(TemplateType.MENU_ORDERING, false),
+    /**
+     * The plain digital menu a customer scans at the table: no item
+     * photographs at all, a top-level Food/Beverages switch, categories as a
+     * scrolling row of chips, and dense name-and-price rows underneath.
+     *
+     * The only one of the five built for reading rather than for looking. The
+     * other four lead with photography, which is slow on a phone at a table
+     * and useless for a drinks list where every row is a name and a number.
+     * Display-only: this is a price list, not a shop.
+     */
+    MENU_COMPACT(TemplateType.MENU_ORDERING, true),
     // These four were HERO / MINIMAL / BOLD / PROFILE until V19 renamed them.
     // The templates had been rebuilt around four audiences and the old names
     // described the designs they replaced, so each name said the opposite of
