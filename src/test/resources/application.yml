@@ -55,6 +55,13 @@ dbwb:
   # Mirrors application.yml. Left enabled so the wiring is exercised; the
   # ceilings are far above anything a test issues, and RateLimiterTest and
   # RateLimitFilterTest drive the limiter directly with their own policies.
+  analytics:
+    buffer-capacity: 20000
+    # Every key application.yml defines is repeated here; a flush interval of
+    # zero would make the scheduler spin, so the real default is kept.
+    flush-interval-ms: 2000
+    batch-size: 500
+
   rate-limits:
     enabled: true
     login:              { limit: 10,  window-minutes: 15 }

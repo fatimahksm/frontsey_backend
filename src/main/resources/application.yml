@@ -30,6 +30,11 @@ spring:
     properties:
       hibernate:
         format_sql: true
+        # Without this saveAll is still one INSERT per row over the wire, which
+        # is most of what batching the analytics writes was meant to avoid.
+        jdbc:
+          batch_size: 500
+        order_inserts: true
 
   flyway:
     enabled: true
@@ -55,6 +60,21 @@ spring:
 
 server:
   port: ${SERVER_PORT:8080}
+
+  # Measured on a published shop with 500 products: the payload is 218KB, and
+  # 50 concurrent readers of it pulled 140 MB/s off the server. That is a
+  # bandwidth wall long before it is a CPU one - a 100 Mbit host tops out
+  # around 60 requests a second on arithmetic alone, whatever the machine is
+  # doing. JSON of this shape compresses by roughly ten to one, and Tomcat
+  # ships with compression off, so every visitor of every site was downloading
+  # it in full.
+  compression:
+    enabled: true
+    # Only what actually benefits. Images and video are already compressed and
+    # re-compressing them costs CPU to make them very slightly larger.
+    mime-types: application/json,application/xml,text/html,text/xml,text/plain,text/css,text/javascript,application/javascript
+    # Below this the gzip header and the CPU cost outweigh what is saved.
+    min-response-size: 1KB
 
 # --- Centralized business configuration ---
 # All BRD-derived numeric/behavioral constants live here (not scattered/hardcoded
@@ -86,6 +106,13 @@ dbwb:
   # Request-rate ceilings. Nothing capped these endpoints before: login,
   # registration and password reset were unbounded, the public endpoints write
   # an analytics row per anonymous call, and every AI call spends real money.
+  analytics:
+    # Visits are counted in memory and written in batches - see
+    # AnalyticsWriteBuffer for the measurement that prompted it.
+    buffer-capacity: ${ANALYTICS_BUFFER_CAPACITY:20000}
+    flush-interval-ms: ${ANALYTICS_FLUSH_INTERVAL_MS:2000}
+    batch-size: ${ANALYTICS_BATCH_SIZE:500}
+
   rate-limits:
     enabled: true
     login:              { limit: 10,  window-minutes: 15 }

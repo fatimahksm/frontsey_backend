@@ -35,18 +35,21 @@ public class AnalyticsService {
     private final WebsiteAccessGuard accessGuard;
     private final SubscriptionQueryService subscriptionQueryService;
     private final BusinessRuleProperties businessRules;
+    private final AnalyticsWriteBuffer writeBuffer;
 
     public AnalyticsService(
             AnalyticsEventRepository repository,
             MenuItemRepository menuItemRepository,
             WebsiteAccessGuard accessGuard,
             SubscriptionQueryService subscriptionQueryService,
-            BusinessRuleProperties businessRules) {
+            BusinessRuleProperties businessRules,
+            AnalyticsWriteBuffer writeBuffer) {
         this.repository = repository;
         this.menuItemRepository = menuItemRepository;
         this.accessGuard = accessGuard;
         this.subscriptionQueryService = subscriptionQueryService;
         this.businessRules = businessRules;
+        this.writeBuffer = writeBuffer;
     }
 
     /**
@@ -76,31 +79,33 @@ public class AnalyticsService {
      * read for days, and an analytics table under load should slow the numbers
      * down, not the pages.
      *
+     * It is no longer @Async either. Off the request thread was the easy half;
+     * the write still took a connection out of the pool the pages are served
+     * from, one per visit, and the executor's saturation policy handed the
+     * insert back to the visitor's own thread once its queue filled. Both are
+     * gone: this is an enqueue, and AnalyticsWriteBuffer writes in batches.
+     *
      * Losing the odd row if the process dies mid-write is an accepted trade: a
      * visit count is a trend, not a ledger. Anything that had to balance would
      * not belong on this path.
      */
-    @Async
-    @Transactional
     public void recordPageView(UUID websiteId, String referralSource, DeviceType deviceType) {
         AnalyticsEvent event = new AnalyticsEvent();
         event.setWebsiteId(websiteId);
         event.setEventType(AnalyticsEventType.PAGE_VIEW);
         event.setReferralSource(referralSource);
         event.setDeviceType(deviceType);
-        repository.save(event);
+        writeBuffer.record(event);
     }
 
     /** Same reasoning as recordPageView: off the request, and cheap to lose. */
-    @Async
-    @Transactional
     public void recordItemView(UUID websiteId, UUID itemId, DeviceType deviceType) {
         AnalyticsEvent event = new AnalyticsEvent();
         event.setWebsiteId(websiteId);
         event.setEventType(AnalyticsEventType.ITEM_VIEW);
         event.setItemId(itemId);
         event.setDeviceType(deviceType);
-        repository.save(event);
+        writeBuffer.record(event);
     }
 
     @Transactional(readOnly = true)

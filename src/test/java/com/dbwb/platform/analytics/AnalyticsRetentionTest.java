@@ -36,7 +36,8 @@ class AnalyticsRetentionTest {
     private AnalyticsService serviceWithRetention(int days) {
         BusinessRuleProperties rules = new BusinessRuleProperties();
         rules.setAnalyticsEventRetentionDays(days);
-        return new AnalyticsService(repository, menuItemRepository, accessGuard, subscriptionQueryService, rules);
+        return new AnalyticsService(repository, menuItemRepository, accessGuard, subscriptionQueryService, rules,
+                new AnalyticsWriteBuffer(repository, new com.dbwb.platform.common.config.AnalyticsWriteProperties()));
     }
 
     @Test

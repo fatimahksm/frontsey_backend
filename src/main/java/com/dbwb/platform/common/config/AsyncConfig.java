@@ -9,18 +9,25 @@ import java.util.concurrent.Executor;
 import java.util.concurrent.ThreadPoolExecutor;
 
 /**
- * The pool behind @Async, which today means recording analytics off the request
- * thread.
+ * The pool behind @Async and, through @EnableAsync's absence of alternatives,
+ * the one any future background work will land in.
  *
- * Declared rather than left to Spring's default. Without an executor bean
- * @Async falls back to SimpleAsyncTaskExecutor, which starts a brand new thread
- * for every call - on a path that fires once per page view, that is a thread
- * per visitor, which is worse than the synchronous write it replaced.
+ * Nothing uses @Async today. It existed for recording analytics off the
+ * request thread, and that path now buffers in memory and writes in batches
+ * instead - see AnalyticsWriteBuffer, and the measurement that prompted it.
+ * Being off the request thread was never the expensive part; one transaction
+ * and one connection per visitor was.
  *
- * CallerRunsPolicy on saturation is deliberate: if the queue is full the
- * request thread does the write itself. That is slow, which is the point - it
- * pushes back on the source instead of silently dropping visits, and it cannot
- * fail the response either way.
+ * The bean is kept rather than deleted because deleting it is the trap: with
+ * @EnableAsync and no executor bean, the next @Async anyone writes silently
+ * falls back to SimpleAsyncTaskExecutor, which starts a brand new thread per
+ * call. A bounded pool that nothing currently uses costs two idle threads;
+ * discovering that fallback under load costs a great deal more.
+ *
+ * CallerRunsPolicy on saturation means a full queue is run on the calling
+ * thread - back-pressure rather than a silent drop. That is the right default
+ * for work that matters, and was the wrong one for counting visits, which is
+ * part of why that path moved.
  */
 @Configuration
 @EnableAsync
