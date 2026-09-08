@@ -24,6 +24,15 @@ public interface ImageStorage {
     String store(byte[] content, String contentType, String extension);
 
     /**
+     * Stores `content` under `key` exactly, rather than under a fresh one.
+     *
+     * Only for a variant whose key has to line up with an original that was
+     * just stored - see ImageVariants. Everything else uses store, so that
+     * nothing outside this package can choose where an object lands.
+     */
+    void storeAt(String key, byte[] content, String contentType);
+
+    /**
      * The absolute URL a visitor's browser should load this key from, or null
      * when the caller should build one from the incoming request instead.
      *

@@ -50,6 +50,70 @@ class UploadServiceTest {
         assertThat(uploadService.storeImage(new MockMultipartFile("file", "a.webp", "image/webp", WEBP_HEADER))).endsWith(".webp");
     }
 
+    // --- the small copy the browser sends alongside (see ImageVariants) ---
+
+    @Test
+    void storesTheSmallCopyUnderAKeyDerivedFromTheOriginals() throws Exception {
+        MockMultipartFile file = new MockMultipartFile("file", "photo.jpg", "image/jpeg", JPEG_HEADER);
+        MockMultipartFile thumbnail = new MockMultipartFile("thumbnail", "photo.jpg", "image/jpeg", JPEG_HEADER);
+
+        String key = uploadService.storeImage(file, thumbnail);
+
+        // The marker on the original is the whole mechanism: it is what tells a
+        // client there is a small copy to ask for.
+        assertThat(key).contains(ImageVariants.ORIGINAL_MARKER + ".");
+        assertThat(ImageVariants.hasThumbnail(key)).isTrue();
+        assertThat(Files.exists(tempDir.resolve(key))).isTrue();
+        assertThat(Files.exists(tempDir.resolve(ImageVariants.thumbnailKey(key)))).isTrue();
+    }
+
+    @Test
+    void anUploadWithNoSmallCopyIsNotMarkedAsHavingOne() throws Exception {
+        // Otherwise every image uploaded before this existed, and every one from
+        // a client that does not send a copy, becomes a 404 on every page view.
+        String key = uploadService.storeImage(new MockMultipartFile("file", "photo.jpg", "image/jpeg", JPEG_HEADER));
+
+        assertThat(ImageVariants.hasThumbnail(key)).isFalse();
+        assertThat(ImageVariants.thumbnailKey(key)).isEqualTo(key);
+    }
+
+    @Test
+    void aSmallCopyThatIsNotAnImageIsDroppedRatherThanStored() throws Exception {
+        MockMultipartFile file = new MockMultipartFile("file", "photo.jpg", "image/jpeg", JPEG_HEADER);
+        byte[] html = "<!doctype html><script>alert(1)</script>".getBytes();
+        MockMultipartFile disguised = new MockMultipartFile("thumbnail", "t.jpg", "image/jpeg", html);
+
+        String key = uploadService.storeImage(file, disguised);
+
+        // The photograph is still stored - the owner does not lose their upload
+        // over its copy - but nothing unvalidated reached the bucket.
+        assertThat(Files.exists(tempDir.resolve(key))).isTrue();
+        assertThat(ImageVariants.hasThumbnail(key)).isFalse();
+        try (var entries = Files.list(tempDir)) {
+            assertThat(entries.count()).isEqualTo(1);
+        }
+    }
+
+    @Test
+    void aSmallCopyOverTheSizeLimitIsDroppedToo() throws Exception {
+        MockMultipartFile file = new MockMultipartFile("file", "photo.jpg", "image/jpeg", JPEG_HEADER);
+        byte[] huge = new byte[2 * 1024 * 1024];
+        System.arraycopy(JPEG_HEADER, 0, huge, 0, JPEG_HEADER.length);
+        MockMultipartFile oversized = new MockMultipartFile("thumbnail", "t.jpg", "image/jpeg", huge);
+
+        String key = uploadService.storeImage(file, oversized);
+
+        assertThat(ImageVariants.hasThumbnail(key)).isFalse();
+    }
+
+    @Test
+    void theThumbnailKeySwapsOnlyTheMarkerAndKeepsTheExtension() {
+        assertThat(ImageVariants.thumbnailKey("abc-def~v.jpg")).isEqualTo("abc-def~400.jpg");
+        assertThat(ImageVariants.thumbnailKey("abc-def~v.png")).isEqualTo("abc-def~400.png");
+        // No marker, no derived key - never a guess at a URL that was not made.
+        assertThat(ImageVariants.thumbnailKey("abc-def.jpg")).isEqualTo("abc-def.jpg");
+    }
+
     @Test
     void refusesAFileThatOnlyClaimsToBeAnImage() {
         // Content-Type is a header the client writes. Trusting it meant an HTML

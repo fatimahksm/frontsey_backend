@@ -40,6 +40,17 @@ public class LocalDiskImageStorage implements ImageStorage {
         }
     }
 
+    @Override
+    public void storeAt(String key, byte[] content, String contentType) {
+        try {
+            Path directory = Path.of(properties.getDirectory());
+            Files.createDirectories(directory);
+            Files.write(directory.resolve(key), content);
+        } catch (IOException e) {
+            throw new UncheckedIOException("Failed to store the uploaded image.", e);
+        }
+    }
+
     /**
      * Null on purpose: these are served by this application, so the correct
      * host is the one the request came in on, which only the controller knows.

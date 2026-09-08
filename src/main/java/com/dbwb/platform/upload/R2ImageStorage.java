@@ -57,6 +57,18 @@ public class R2ImageStorage implements ImageStorage {
     }
 
     @Override
+    public void storeAt(String key, byte[] content, String contentType) {
+        client.putObject(
+                PutObjectRequest.builder()
+                        .bucket(config.getBucket())
+                        .key(key)
+                        .contentType(contentType)
+                        .cacheControl(CACHE_CONTROL)
+                        .build(),
+                RequestBody.fromBytes(content));
+    }
+
+    @Override
     public String publicUrl(String key) {
         String base = config.getPublicBaseUrl();
         if (base == null || base.isBlank()) {

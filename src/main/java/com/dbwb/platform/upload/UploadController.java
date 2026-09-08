@@ -21,8 +21,13 @@ public class UploadController {
 
     /** Any authenticated account may upload - the resulting URL is just pasted into whichever field the caller owns; tenant checks happen when that field is saved. */
     @PostMapping("/images")
-    public ApiResponse<UploadResponse> uploadImage(@RequestParam("file") MultipartFile file, HttpServletRequest request) {
-        String key = uploadService.storeImage(file);
+    public ApiResponse<UploadResponse> uploadImage(
+            @RequestParam("file") MultipartFile file,
+            // Optional: the browser makes a small copy before uploading, and an
+            // older client or a direct API call simply will not send one.
+            @RequestParam(value = "thumbnail", required = false) MultipartFile thumbnail,
+            HttpServletRequest request) {
+        String key = uploadService.storeImage(file, thumbnail);
 
         // Object storage knows its own public address. Local disk does not -
         // those files are served by this application, so the right host is

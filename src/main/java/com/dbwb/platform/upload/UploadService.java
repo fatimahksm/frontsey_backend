@@ -35,6 +35,24 @@ public class UploadService {
     }
 
     public String storeImage(MultipartFile file) {
+        return storeImage(file, null);
+    }
+
+    /**
+     * Stores an image and, when the caller sends one, the small copy that goes
+     * with it under a key derived from the original's - see ImageVariants.
+     *
+     * The thumbnail is validated exactly as strictly as the original. It
+     * arrives on the same request from the same untrusted client, and a
+     * caller that can put arbitrary bytes in the bucket by calling them a
+     * thumbnail has the same hole the magic-byte check was added to close.
+     *
+     * A thumbnail that fails validation is dropped rather than failing the
+     * whole upload: the original is fine, the page will simply load the full
+     * image where it would have loaded a small one, and refusing the owner's
+     * photograph over its shrunken copy would be the worse trade.
+     */
+    public String storeImage(MultipartFile file, MultipartFile thumbnail) {
         if (file == null || file.isEmpty()) {
             throw new BusinessRuleViolationException("No file was uploaded.");
         }
@@ -70,10 +88,37 @@ public class UploadService {
             // Where it goes is the storage's business - local disk in
             // development, Cloudflare R2 in production. This method's job ends
             // at deciding the bytes are acceptable.
-            return storage.store(file.getBytes(), detectedType, EXTENSION_BY_CONTENT_TYPE.get(detectedType));
+            String extension = EXTENSION_BY_CONTENT_TYPE.get(detectedType);
+            byte[] smallCopy = acceptableThumbnail(thumbnail, maxBytes);
+            if (smallCopy == null) {
+                return storage.store(file.getBytes(), detectedType, extension);
+            }
+
+            // The marker goes in the original's key, not just the copy's: it is
+            // the original's URL that gets stored and later read, and the
+            // marker is how a client knows a small copy exists to ask for.
+            String key = storage.store(file.getBytes(), detectedType, ImageVariants.ORIGINAL_MARKER + extension);
+            storage.storeAt(ImageVariants.thumbnailKey(key), smallCopy, "image/jpeg");
+            return key;
         } catch (IOException e) {
             throw new UncheckedIOException("Failed to store the uploaded image.", e);
         }
+    }
+
+    /**
+     * The thumbnail's bytes if they are a JPEG we would have accepted on its
+     * own, and null in every other case - absent, empty, oversized, or not
+     * actually an image. Null means "store the original alone", never an error.
+     *
+     * JPEG only, because that is what the browser encodes a downscale as, and
+     * narrowing it here means one fewer format that can reach the bucket by a
+     * path the main upload does not take.
+     */
+    private byte[] acceptableThumbnail(MultipartFile thumbnail, long maxBytes) throws IOException {
+        if (thumbnail == null || thumbnail.isEmpty() || thumbnail.getSize() > maxBytes) {
+            return null;
+        }
+        return "image/jpeg".equals(detectImageType(thumbnail)) ? thumbnail.getBytes() : null;
     }
 
     /**
