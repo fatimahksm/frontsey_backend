@@ -151,6 +151,58 @@ class WebsiteServiceTest {
     }
 
     @Test
+    void storeWebsiteCannotPublishWithoutAtLeastOneCollection() {
+        website.setTemplateType(TemplateType.STORE);
+        when(categoryRepository.countByWebsiteId(websiteId)).thenReturn(0L);
+
+        assertThatThrownBy(() -> websiteService.publish(websiteId, owner))
+                .isInstanceOf(BusinessRuleViolationException.class)
+                // A shop owner's console says "collection" and "product"
+                // nowhere near the word "menu", so neither does the refusal.
+                .hasMessageContaining("collection");
+    }
+
+    @Test
+    void storeWebsitePublishesOnceItHasACollection() {
+        website.setTemplateType(TemplateType.STORE);
+        when(categoryRepository.countByWebsiteId(websiteId)).thenReturn(1L);
+
+        BusinessWebsite published = websiteService.publish(websiteId, owner);
+
+        assertThat(published.getStatus()).isEqualTo(WebsiteStatus.PUBLISHED);
+    }
+
+    @Test
+    void unsetLayoutVariantDefaultsToTheShopFrontForAStore() {
+        website.setTemplateType(TemplateType.STORE);
+
+        assertThat(website.getEffectiveLayoutVariant()).isEqualTo(LayoutVariant.STORE_SHOWCASE);
+    }
+
+    /**
+     * A shop shares the menu's tables, which is exactly why this needs a test:
+     * the two types being storage-compatible must not make them
+     * interchangeable to the owner.
+     */
+    @Test
+    void aStoreCannotBeSwitchedOntoAMenuLayout() {
+        website.setTemplateType(TemplateType.STORE);
+
+        assertThatThrownBy(() -> websiteService.updateLayoutVariant(websiteId, owner, LayoutVariant.MENU_GRID))
+                .isInstanceOf(BusinessRuleViolationException.class)
+                .hasMessageContaining("not a valid layout");
+    }
+
+    @Test
+    void aStoreCanSwitchBetweenItsOwnTwoLayouts() {
+        website.setTemplateType(TemplateType.STORE);
+
+        BusinessWebsite updated = websiteService.updateLayoutVariant(websiteId, owner, LayoutVariant.STORE_CATALOG);
+
+        assertThat(updated.getEffectiveLayoutVariant()).isEqualTo(LayoutVariant.STORE_CATALOG);
+    }
+
+    @Test
     void portfolioWebsiteCannotPublishWithoutAtLeastOneService() {
         website.setTemplateType(TemplateType.PORTFOLIO);
         when(serviceItemRepository.countByWebsiteId(websiteId)).thenReturn(0L);

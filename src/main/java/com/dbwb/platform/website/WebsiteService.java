@@ -385,6 +385,14 @@ public class WebsiteService {
                     throw new BusinessRuleViolationException("At least one menu category and item is required before publishing.");
                 }
             }
+            case STORE -> {
+                // The same table as the menu's, and the same rule: a shop with
+                // nothing in it is not a shop. Worded as a shop owner would
+                // word it, since nothing in their console says "category".
+                if (categoryRepository.countByWebsiteId(website.getId()) == 0) {
+                    throw new BusinessRuleViolationException("At least one collection and product is required before publishing.");
+                }
+            }
         }
 
         // BR-RULE-013: WhatsApp number mandatory when WhatsApp ordering is enabled.

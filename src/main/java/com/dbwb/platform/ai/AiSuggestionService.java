@@ -74,6 +74,8 @@ public class AiSuggestionService {
             prompt.append(", which showcases services on a portfolio-style website");
         } else if ("MENU_ORDERING".equals(request.templateType())) {
             prompt.append(", which runs a menu/ordering website");
+        } else if ("STORE".equals(request.templateType())) {
+            prompt.append(", which sells its products from an online shop");
         }
         if (request.existingText() != null && !request.existingText().isBlank()) {
             prompt.append(". Improve on or take inspiration from this existing draft: \"").append(request.existingText()).append("\"");

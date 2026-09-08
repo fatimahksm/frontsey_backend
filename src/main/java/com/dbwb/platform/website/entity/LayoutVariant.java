@@ -51,6 +51,20 @@ public enum LayoutVariant {
     PORTFOLIO_SERVICES(TemplateType.PORTFOLIO, true),
 
     /**
+     * Shop front: big product photographs in a two-column grid, collections as
+     * a rail across the top, and a cart. For a shop whose things are bought
+     * with the eye - clothes, gifts, homeware, flowers, cosmetics.
+     */
+    STORE_SHOWCASE(TemplateType.STORE, false),
+    /**
+     * Catalogue: search first, then a dense list of rows - small thumbnail,
+     * name, price, and whether it is in stock. For a shop with far more
+     * products than anyone will scroll through, where the visitor arrives
+     * knowing what they came for.
+     */
+    STORE_CATALOG(TemplateType.STORE, false),
+
+    /**
      * One occasion, told in order: who and what, when and where, the running
      * order of the day, and the photographs afterwards. Display-only - an
      * invitation has nothing to sell.
@@ -84,6 +98,7 @@ public enum LayoutVariant {
             case PORTFOLIO -> PORTFOLIO_PROFESSIONAL;
             case EVENTS -> EVENTS_CELEBRATION;
             case MENU_ORDERING -> MENU_CLASSIC;
+            case STORE -> STORE_SHOWCASE;
         };
     }
 }
