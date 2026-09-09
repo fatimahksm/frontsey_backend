@@ -7,6 +7,20 @@ spring:
     username: ${DB_USERNAME:dbwb_user}
     password: ${DB_PASSWORD:changeme}
     driver-class-name: org.postgresql.Driver
+    hikari:
+      # Sized on purpose rather than left at Hikari's default of 10. A public
+      # page load holds a connection for the whole of its assembly, so ten
+      # caps concurrent visitors at ten regardless of how many request threads
+      # Tomcat has free. Twenty is comfortable for one node against a small
+      # Postgres; raise it with the database's own max_connections in view,
+      # not on its own.
+      maximum-pool-size: ${DB_POOL_SIZE:20}
+      minimum-idle: ${DB_POOL_MIN_IDLE:5}
+      # Fail fast rather than piling up: a request that cannot get a connection
+      # in three seconds should return an error, not hold a thread until the
+      # user gives up.
+      connection-timeout: 3000
+      leak-detection-threshold: 20000
 
   jpa:
     hibernate:
@@ -16,6 +30,11 @@ spring:
     properties:
       hibernate:
         format_sql: true
+        # Without this saveAll is still one INSERT per row over the wire, which
+        # is most of what batching the analytics writes was meant to avoid.
+        jdbc:
+          batch_size: 500
+        order_inserts: true
 
   flyway:
     enabled: true
@@ -42,6 +61,21 @@ spring:
 server:
   port: ${SERVER_PORT:8080}
 
+  # Measured on a published shop with 500 products: the payload is 218KB, and
+  # 50 concurrent readers of it pulled 140 MB/s off the server. That is a
+  # bandwidth wall long before it is a CPU one - a 100 Mbit host tops out
+  # around 60 requests a second on arithmetic alone, whatever the machine is
+  # doing. JSON of this shape compresses by roughly ten to one, and Tomcat
+  # ships with compression off, so every visitor of every site was downloading
+  # it in full.
+  compression:
+    enabled: true
+    # Only what actually benefits. Images and video are already compressed and
+    # re-compressing them costs CPU to make them very slightly larger.
+    mime-types: application/json,application/xml,text/html,text/xml,text/plain,text/css,text/javascript,application/javascript
+    # Below this the gzip header and the CPU cost outweigh what is saved.
+    min-response-size: 1KB
+
 # --- Centralized business configuration ---
 # All BRD-derived numeric/behavioral constants live here (not scattered/hardcoded
 # in services) so they can be tuned per environment without a code change.
@@ -57,15 +91,37 @@ dbwb:
   business-rules:
     subscription-grace-period-days: 3         # BR-SUB-006
     subscription-trial-days: 10               # free trial opened at first publish
+    default-websites-per-owner: 3             # TBD-003 floor; a paid plan's maxWebsites overrides it, 0 = unlimited
     account-deletion-disable-window-days: 30  # BR-AUTH-006
     website-trash-retention-days: 30          # BR-DATA-004
     menu-item-trash-retention-days: 7         # BR-MENU-011
+    analytics-event-retention-days: 365       # raw events discarded past this; 0 disables the purge
     website-public-load-target-seconds: 3     # BR-NFR-001
     email-verification-token-ttl-hours: 24    # BR-AUTH-002
     password-reset-token-ttl-minutes: 30      # BR-AUTH-004
     maintenance-job-interval-ms: 3600000      # 1 hour - BR-SUB-006/BR-ADM-004 background jobs
     manager-invitation-expiry-days: 14        # BR-MGR-007
     refresh-token-ttl-days: ${JWT_REFRESH_TTL_DAYS:30}  # BR-AUTH-007
+
+  # Request-rate ceilings. Nothing capped these endpoints before: login,
+  # registration and password reset were unbounded, the public endpoints write
+  # an analytics row per anonymous call, and every AI call spends real money.
+  analytics:
+    # Visits are counted in memory and written in batches - see
+    # AnalyticsWriteBuffer for the measurement that prompted it.
+    buffer-capacity: ${ANALYTICS_BUFFER_CAPACITY:20000}
+    flush-interval-ms: ${ANALYTICS_FLUSH_INTERVAL_MS:2000}
+    batch-size: ${ANALYTICS_BATCH_SIZE:500}
+
+  rate-limits:
+    enabled: true
+    login:              { limit: 10,  window-minutes: 15 }
+    registration:       { limit: 5,   window-minutes: 60 }
+    password-reset:     { limit: 5,   window-minutes: 60 }
+    ai-suggestions:     { limit: 30,  window-minutes: 60 }
+    uploads:            { limit: 100, window-minutes: 60 }
+    public-item-view:   { limit: 60,  window-minutes: 1 }
+    public-page-view:   { limit: 240, window-minutes: 1 }
 
   frontend:
     public-site-base-url: ${PUBLIC_SITE_BASE_URL:http://localhost:3000}
@@ -80,8 +136,23 @@ dbwb:
     bootstrap-password: ${ADMIN_BOOTSTRAP_PASSWORD:}
 
   uploads:
+    # local | r2. Local writes to this container's disk: the files vanish when
+    # it is replaced and a second instance cannot see them, so it is for
+    # development only. r2 is Cloudflare R2 - the files outlive the container,
+    # every instance sees the same ones, and a public bucket is served from
+    # Cloudflare's network, which is the CDN as well.
+    storage: ${UPLOAD_STORAGE:local}
     directory: ${UPLOAD_DIRECTORY:uploads}
     max-file-size-mb: ${UPLOAD_MAX_FILE_SIZE_MB:5}
+    r2:
+      account-id: ${R2_ACCOUNT_ID:}
+      bucket: ${R2_BUCKET:}
+      access-key-id: ${R2_ACCESS_KEY_ID:}
+      secret-access-key: ${R2_SECRET_ACCESS_KEY:}
+      # The bucket's public address - its r2.dev URL, or a custom domain on it.
+      # Required whenever storage is r2: without it an upload succeeds and then
+      # shows as a broken picture on the live site.
+      public-base-url: ${R2_PUBLIC_BASE_URL:}
 
   ai:
     openrouter-api-key: ${OPENROUTER_API_KEY:}

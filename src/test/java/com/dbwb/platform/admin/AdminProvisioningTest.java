@@ -211,7 +211,7 @@ class AdminProvisioningTest {
     void aTemplateFromTheOtherFamilyIsRefused() {
         ProvisionWebsiteRequest mismatched = new ProvisionWebsiteRequest(
                 "client@example.com", null, "The Corner Shop",
-                TemplateType.MENU_ORDERING, LayoutVariant.PORTFOLIO_HERO, null, false);
+                TemplateType.MENU_ORDERING, LayoutVariant.PORTFOLIO_PROFESSIONAL, null, false);
 
         assertThatThrownBy(() -> adminService.provisionWebsiteForOwner(superAdmin, mismatched))
                 .isInstanceOf(BusinessRuleViolationException.class)

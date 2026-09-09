@@ -24,14 +24,52 @@ public enum LayoutVariant {
     MENU_ELEGANT(TemplateType.MENU_ORDERING, true),
     /** Warm, photography-led cafe/bistro style: bold headline hero, real combo-box deals, card-grid menu with sticky category filters. */
     MENU_BISTRO(TemplateType.MENU_ORDERING, false),
-    /** Full-bleed dark hero, centered content, services grid, work gallery. */
-    PORTFOLIO_HERO(TemplateType.PORTFOLIO, true),
-    /** Light editorial split-screen - fixed left profile panel, scrollable right content. */
-    PORTFOLIO_MINIMAL(TemplateType.PORTFOLIO, true),
-    /** Vibrant creative-agency style - bold typography, asymmetric accents, masonry work gallery as the centerpiece. */
-    PORTFOLIO_BOLD(TemplateType.PORTFOLIO, true),
-    /** Personal, photo-led homepage - real profile photo hero with a floating highlight badge, a featured-projects grid. */
-    PORTFOLIO_PROFILE(TemplateType.PORTFOLIO, true);
+    /**
+     * The plain digital menu a customer scans at the table: no item
+     * photographs at all, a top-level Food/Beverages switch, categories as a
+     * scrolling row of chips, and dense name-and-price rows underneath.
+     *
+     * The only one of the five built for reading rather than for looking. The
+     * other four lead with photography, which is slow on a phone at a table
+     * and useless for a drinks list where every row is a name and a number.
+     * Display-only: this is a price list, not a shop.
+     */
+    MENU_COMPACT(TemplateType.MENU_ORDERING, true),
+    // These four were HERO / MINIMAL / BOLD / PROFILE until V19 renamed them.
+    // The templates had been rebuilt around four audiences and the old names
+    // described the designs they replaced, so each name said the opposite of
+    // what it selected. The owner-facing labels live in the frontend's
+    // lib/website/layout-options.ts; these are the stored values.
+
+    /** Renders "Professional / CV" - experience, skills, projects and a downloadable CV, dense and dark. For developers, engineers, accountants, consultants. */
+    PORTFOLIO_PROFESSIONAL(TemplateType.PORTFOLIO, true),
+    /** Renders "Creative / Visual" - pictures first, large editorial compositions with a caption beside each, on warm paper. For designers, photographers, architects, artists. */
+    PORTFOLIO_VISUAL(TemplateType.PORTFOLIO, true),
+    /** Renders "Brand / Product" - a loud front page for something you made: story, featured items, social links, heavy type. For small businesses, creators, studios, shops. */
+    PORTFOLIO_BRAND(TemplateType.PORTFOLIO, true),
+    /** Renders "Freelancer / Services" - built to get you booked: offers and prices, client proof, FAQ, a contact button never far away. For coaches, marketers, trainers, tutors. */
+    PORTFOLIO_SERVICES(TemplateType.PORTFOLIO, true),
+
+    /**
+     * Shop front: big product photographs in a two-column grid, collections as
+     * a rail across the top, and a cart. For a shop whose things are bought
+     * with the eye - clothes, gifts, homeware, flowers, cosmetics.
+     */
+    STORE_SHOWCASE(TemplateType.STORE, false),
+    /**
+     * Catalogue: search first, then a dense list of rows - small thumbnail,
+     * name, price, and whether it is in stock. For a shop with far more
+     * products than anyone will scroll through, where the visitor arrives
+     * knowing what they came for.
+     */
+    STORE_CATALOG(TemplateType.STORE, false),
+
+    /**
+     * One occasion, told in order: who and what, when and where, the running
+     * order of the day, and the photographs afterwards. Display-only - an
+     * invitation has nothing to sell.
+     */
+    EVENTS_CELEBRATION(TemplateType.EVENTS, true);
 
     private final TemplateType templateType;
     private final boolean displayOnly;
@@ -56,6 +94,11 @@ public enum LayoutVariant {
     }
 
     public static LayoutVariant defaultFor(TemplateType templateType) {
-        return templateType == TemplateType.PORTFOLIO ? PORTFOLIO_HERO : MENU_CLASSIC;
+        return switch (templateType) {
+            case PORTFOLIO -> PORTFOLIO_PROFESSIONAL;
+            case EVENTS -> EVENTS_CELEBRATION;
+            case MENU_ORDERING -> MENU_CLASSIC;
+            case STORE -> STORE_SHOWCASE;
+        };
     }
 }

@@ -23,8 +23,10 @@ portfolios with no projects simply get an empty list.
 ## Left to do
 
 **Backend**
-1. Tests for `PortfolioProjectService` - ownership check, reorder, cascade.
-   None were written; the suite passes because nothing exercises the new code.
+1. ~~Tests for `PortfolioProjectService`~~ - done. `PortfolioProjectServiceTest`
+   covers the ownership check on update and delete, reorder (including ids from
+   another website, which are ignored), and append-to-end sort order.
+   `PortfolioProjectRepositoryTest` persists a row for real.
 2. `experience_entries` - same shape (year, role, company, detail, sortOrder),
    same CRUD. Not started.
 
@@ -45,6 +47,13 @@ portfolios with no projects simply get an empty list.
   `ddl-auto=create-drop` and Flyway disabled, so they build the schema from the
   entities and never execute a migration. Run the app against a real Postgres
   before believing it works.
+- **This table was missing from the test schema entirely, and the build stayed
+  green.** The column was `year`, which H2 reserves as an identifier, so
+  Hibernate's `CREATE TABLE` failed, the failure was logged and swallowed, and
+  no test noticed because no test touched the table. V18 renames the column to
+  `project_year`; the Java field and the JSON both still say `year`. The
+  general lesson: a green suite proves nothing about a table nothing queries -
+  when you add an entity, add a `@DataJpaTest` that persists one row.
 - **Rebuild fully after pulling.** A stale `target/classes` keeps old SQL
   resources, which is exactly how the earlier `theme_config` failure happened -
   Flyway reported success at version 12 while the entity expected 13.

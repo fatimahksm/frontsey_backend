@@ -47,7 +47,11 @@ public record PublicWebsiteResponse(
          * every menu site and for any portfolio that has not added one, so it
          * is always a list and never null.
          */
-        List<PublicProject> projects
+        List<PublicProject> projects,
+        /** Populated only for TemplateType.EVENTS; null on every other kind of website. */
+        PublicEvent event,
+        /** The running order of the day, in the host's order. Empty for every non-EVENTS site. */
+        List<PublicScheduleEntry> schedule
 ) {
     public record PublicSeoMetadata(String metaTitle, String metaDescription, String ogImageUrl) {
     }
@@ -82,6 +86,21 @@ public record PublicWebsiteResponse(
     }
 
     /** A project as a visitor sees it - tags already split, nothing internal. */
+    /** The facts of the occasion. Every field is optional - the template hides what is absent. */
+    public record PublicEvent(
+            String eventDate,
+            String startTime,
+            String endTime,
+            String venueName,
+            String dressCode,
+            String rsvpBy,
+            String note) {
+    }
+
+    /** One line in the running order - "7:00 PM - Ceremony". */
+    public record PublicScheduleEntry(String id, String time, String title, String detail) {
+    }
+
     public record PublicProject(
             String id,
             String name,

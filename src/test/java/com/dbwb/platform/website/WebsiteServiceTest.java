@@ -24,6 +24,7 @@ import com.dbwb.platform.website.entity.OrderingMode;
 import com.dbwb.platform.website.entity.PageMode;
 import com.dbwb.platform.website.entity.TemplateType;
 import com.dbwb.platform.website.entity.WebsiteStatus;
+import com.dbwb.platform.website.dto.CreateWebsiteRequest;
 import com.dbwb.platform.website.dto.UpdateDraftContentRequest;
 import com.dbwb.platform.website.repository.BusinessWebsiteRepository;
 import org.junit.jupiter.api.BeforeEach;
@@ -42,6 +43,10 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
+import static org.mockito.Mockito.doThrow;
+import static org.mockito.Mockito.never;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.when;
 
 /**
@@ -66,6 +71,9 @@ class WebsiteServiceTest {
     @Mock private PublicWebsiteService publicWebsiteService;
     @Mock private ManagerAccessRepository managerAccessRepository;
     @Mock private com.dbwb.platform.theme.ThemeConfigValidator themeConfigValidator;
+    @Mock private com.dbwb.platform.plan.TemplateAvailability templateAvailability;
+    private final com.dbwb.platform.common.config.BusinessRuleProperties businessRules =
+            new com.dbwb.platform.common.config.BusinessRuleProperties();
 
     private WebsiteService websiteService;
 
@@ -78,7 +86,8 @@ class WebsiteServiceTest {
         websiteService = new WebsiteService(
                 websiteRepository, themeRepository, accountRepository, profileRepository, categoryRepository,
                 serviceItemRepository, slugGenerator, accessGuard, subscriptionQueryService, subscriptionService,
-                auditService, publicWebsiteService, managerAccessRepository, themeConfigValidator);
+                auditService, publicWebsiteService, managerAccessRepository, themeConfigValidator,
+                templateAvailability, businessRules);
 
         website = TestEntities.withId(new BusinessWebsite(), websiteId);
         website.setBusinessName("Test Business");
@@ -142,6 +151,58 @@ class WebsiteServiceTest {
     }
 
     @Test
+    void storeWebsiteCannotPublishWithoutAtLeastOneCollection() {
+        website.setTemplateType(TemplateType.STORE);
+        when(categoryRepository.countByWebsiteId(websiteId)).thenReturn(0L);
+
+        assertThatThrownBy(() -> websiteService.publish(websiteId, owner))
+                .isInstanceOf(BusinessRuleViolationException.class)
+                // A shop owner's console says "collection" and "product"
+                // nowhere near the word "menu", so neither does the refusal.
+                .hasMessageContaining("collection");
+    }
+
+    @Test
+    void storeWebsitePublishesOnceItHasACollection() {
+        website.setTemplateType(TemplateType.STORE);
+        when(categoryRepository.countByWebsiteId(websiteId)).thenReturn(1L);
+
+        BusinessWebsite published = websiteService.publish(websiteId, owner);
+
+        assertThat(published.getStatus()).isEqualTo(WebsiteStatus.PUBLISHED);
+    }
+
+    @Test
+    void unsetLayoutVariantDefaultsToTheShopFrontForAStore() {
+        website.setTemplateType(TemplateType.STORE);
+
+        assertThat(website.getEffectiveLayoutVariant()).isEqualTo(LayoutVariant.STORE_SHOWCASE);
+    }
+
+    /**
+     * A shop shares the menu's tables, which is exactly why this needs a test:
+     * the two types being storage-compatible must not make them
+     * interchangeable to the owner.
+     */
+    @Test
+    void aStoreCannotBeSwitchedOntoAMenuLayout() {
+        website.setTemplateType(TemplateType.STORE);
+
+        assertThatThrownBy(() -> websiteService.updateLayoutVariant(websiteId, owner, LayoutVariant.MENU_GRID))
+                .isInstanceOf(BusinessRuleViolationException.class)
+                .hasMessageContaining("not a valid layout");
+    }
+
+    @Test
+    void aStoreCanSwitchBetweenItsOwnTwoLayouts() {
+        website.setTemplateType(TemplateType.STORE);
+
+        BusinessWebsite updated = websiteService.updateLayoutVariant(websiteId, owner, LayoutVariant.STORE_CATALOG);
+
+        assertThat(updated.getEffectiveLayoutVariant()).isEqualTo(LayoutVariant.STORE_CATALOG);
+    }
+
+    @Test
     void portfolioWebsiteCannotPublishWithoutAtLeastOneService() {
         website.setTemplateType(TemplateType.PORTFOLIO);
         when(serviceItemRepository.countByWebsiteId(websiteId)).thenReturn(0L);
@@ -182,7 +243,7 @@ class WebsiteServiceTest {
     void unsetLayoutVariantDefaultsToHeroForPortfolio() {
         website.setTemplateType(TemplateType.PORTFOLIO);
 
-        assertThat(website.getEffectiveLayoutVariant()).isEqualTo(LayoutVariant.PORTFOLIO_HERO);
+        assertThat(website.getEffectiveLayoutVariant()).isEqualTo(LayoutVariant.PORTFOLIO_PROFESSIONAL);
     }
 
     @Test
@@ -230,7 +291,7 @@ class WebsiteServiceTest {
     void cannotSwitchToALayoutThatBelongsToTheOtherTemplateType() {
         website.setTemplateType(TemplateType.MENU_ORDERING);
 
-        assertThatThrownBy(() -> websiteService.updateLayoutVariant(websiteId, owner, LayoutVariant.PORTFOLIO_HERO))
+        assertThatThrownBy(() -> websiteService.updateLayoutVariant(websiteId, owner, LayoutVariant.PORTFOLIO_PROFESSIONAL))
                 .isInstanceOf(BusinessRuleViolationException.class)
                 .hasMessageContaining("not a valid layout");
     }
@@ -292,5 +353,110 @@ class WebsiteServiceTest {
             assertThat(a.role()).isEqualTo(com.dbwb.platform.website.dto.AccessRole.MANAGER);
             assertThat(a.permissions()).containsExactly(Permission.VIEW_ANALYTICS);
         });
+    }
+
+    @Test
+    void refusesALayoutTheAdminHasWithdrawn() {
+        website.setTemplateType(TemplateType.PORTFOLIO);
+        website.setLayoutVariant(LayoutVariant.PORTFOLIO_PROFESSIONAL);
+        when(accessGuard.requirePermission(eq(websiteId), eq(owner), any())).thenReturn(website);
+        doThrow(new BusinessRuleViolationException("That template is not available to choose right now. Pick another one."))
+                .when(templateAvailability).requireOffered(LayoutVariant.PORTFOLIO_VISUAL);
+
+        assertThatThrownBy(() -> websiteService.updateLayoutVariant(websiteId, owner, LayoutVariant.PORTFOLIO_VISUAL))
+                .isInstanceOf(BusinessRuleViolationException.class)
+                .hasMessageContaining("not available to choose");
+
+        assertThat(website.getLayoutVariant()).isEqualTo(LayoutVariant.PORTFOLIO_PROFESSIONAL);
+    }
+
+    @Test
+    void doesNotTrapAWebsiteAlreadyOnAWithdrawnLayout() {
+        // Withdrawing a template must not mean the sites already on it can never
+        // save this screen again. Re-selecting what they are already on is
+        // allowed, and never consults availability at all.
+        website.setTemplateType(TemplateType.PORTFOLIO);
+        website.setLayoutVariant(LayoutVariant.PORTFOLIO_VISUAL);
+        when(accessGuard.requirePermission(eq(websiteId), eq(owner), any())).thenReturn(website);
+
+        websiteService.updateLayoutVariant(websiteId, owner, LayoutVariant.PORTFOLIO_VISUAL);
+
+        assertThat(website.getLayoutVariant()).isEqualTo(LayoutVariant.PORTFOLIO_VISUAL);
+        verify(templateAvailability, never()).requireOffered(any());
+    }
+
+    @Test
+    void refusesToCreateAKindOfWebsiteWithNothingOnOffer() {
+        // Otherwise the new website falls back to LayoutVariant.defaultFor(),
+        // which may itself be withdrawn - creating it straight onto something
+        // the owner was never allowed to pick.
+        doThrow(new BusinessRuleViolationException("No templates of that kind are available right now."))
+                .when(templateAvailability).requireAnyOffered(TemplateType.PORTFOLIO);
+
+        assertThatThrownBy(() -> websiteService.create(owner,
+                new CreateWebsiteRequest("A Studio", PageMode.MULTI_PAGE, TemplateType.PORTFOLIO, null)))
+                .isInstanceOf(BusinessRuleViolationException.class)
+                .hasMessageContaining("No templates of that kind");
+
+        verify(websiteRepository, never()).save(any());
+    }
+
+    @Test
+    void refusesAnotherWebsiteOnceTheOwnersAllowanceIsSpent() {
+        // BRD 7.2 / TBD-003. Unenforced until now, so anyone with an account
+        // could create websites without limit.
+        businessRules.setDefaultWebsitesPerOwner(2);
+        when(websiteRepository.findByOwnerId(owner.accountId()))
+                .thenReturn(List.of(liveWebsite(), liveWebsite()));
+
+        assertThatThrownBy(() -> websiteService.create(owner,
+                new CreateWebsiteRequest("A Third", PageMode.MULTI_PAGE, TemplateType.MENU_ORDERING, null)))
+                .isInstanceOf(BusinessRuleViolationException.class)
+                .hasMessageContaining("covers 2 websites");
+
+        verify(websiteRepository, never()).save(any());
+    }
+
+    @Test
+    void doesNotCountTrashedOrDeletedWebsitesAgainstTheAllowance() {
+        // The limit is on what an owner is running, not on everything they have
+        // ever made - otherwise deleting one would not free the slot back up.
+        businessRules.setDefaultWebsitesPerOwner(2);
+        BusinessWebsite trashed = liveWebsite();
+        trashed.setStatus(WebsiteStatus.TRASHED);
+        BusinessWebsite deleted = liveWebsite();
+        deleted.setStatus(WebsiteStatus.DELETED);
+        when(websiteRepository.findByOwnerId(owner.accountId()))
+                .thenReturn(List.of(liveWebsite(), trashed, deleted));
+        when(accountRepository.getReferenceById(owner.accountId())).thenReturn(new com.dbwb.platform.account.entity.Account());
+        when(slugGenerator.generateUniqueSlug(any())).thenReturn("a-second");
+        when(websiteRepository.save(any())).thenAnswer(inv ->
+                TestEntities.withId(inv.getArgument(0), UUID.randomUUID()));
+
+        websiteService.create(owner, new CreateWebsiteRequest("A Second", PageMode.MULTI_PAGE, TemplateType.MENU_ORDERING, null));
+
+        verify(websiteRepository).save(any());
+    }
+
+    @Test
+    void anAllowanceOfZeroMeansNoLimitAtAll() {
+        // The old behaviour, still reachable from config for anyone who wants it.
+        businessRules.setDefaultWebsitesPerOwner(0);
+        when(websiteRepository.findByOwnerId(owner.accountId()))
+                .thenReturn(List.of(liveWebsite(), liveWebsite(), liveWebsite(), liveWebsite()));
+        when(accountRepository.getReferenceById(owner.accountId())).thenReturn(new com.dbwb.platform.account.entity.Account());
+        when(slugGenerator.generateUniqueSlug(any())).thenReturn("another");
+        when(websiteRepository.save(any())).thenAnswer(inv ->
+                TestEntities.withId(inv.getArgument(0), UUID.randomUUID()));
+
+        websiteService.create(owner, new CreateWebsiteRequest("Another", PageMode.MULTI_PAGE, TemplateType.MENU_ORDERING, null));
+
+        verify(websiteRepository).save(any());
+    }
+
+    private BusinessWebsite liveWebsite() {
+        BusinessWebsite existing = TestEntities.withId(new BusinessWebsite(), UUID.randomUUID());
+        existing.setStatus(WebsiteStatus.DRAFT);
+        return existing;
     }
 }

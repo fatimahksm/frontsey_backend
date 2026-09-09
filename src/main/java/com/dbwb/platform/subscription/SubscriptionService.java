@@ -81,9 +81,13 @@ public class SubscriptionService {
         // owner picks - they choose a template, then monthly or yearly. The
         // template also names which plan's limits the website gets, which is the
         // one place pricing and entitlement meet.
+        // Deliberately not filtered on active. A template being withdrawn from
+        // sale means nobody new may choose it - not that the websites already on
+        // it stop being able to pay. Filtering here made turning a template off
+        // strand its existing customers at checkout with "no price set", which
+        // is the opposite of what withdrawing a product should do.
         TemplatePrice pricing = templatePriceRepository
                 .findByLayoutVariant(website.getEffectiveLayoutVariant())
-                .filter(TemplatePrice::isActive)
                 .orElseThrow(() -> new ResourceNotFoundException(
                         "This template has no price set. Ask support to price it before subscribing."));
 

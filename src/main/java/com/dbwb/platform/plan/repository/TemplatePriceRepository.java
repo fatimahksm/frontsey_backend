@@ -12,4 +12,7 @@ public interface TemplatePriceRepository extends JpaRepository<TemplatePrice, UU
     Optional<TemplatePrice> findByLayoutVariant(LayoutVariant layoutVariant);
 
     List<TemplatePrice> findAllByOrderByLayoutVariantAsc();
+
+    /** Only the templates currently on offer - what a picker may show. */
+    List<TemplatePrice> findAllByActiveTrueOrderByLayoutVariantAsc();
 }

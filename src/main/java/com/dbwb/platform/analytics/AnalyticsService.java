@@ -5,16 +5,19 @@ import com.dbwb.platform.analytics.entity.AnalyticsEvent;
 import com.dbwb.platform.analytics.entity.AnalyticsEventType;
 import com.dbwb.platform.analytics.entity.DeviceType;
 import com.dbwb.platform.analytics.repository.AnalyticsEventRepository;
+import com.dbwb.platform.common.config.BusinessRuleProperties;
 import com.dbwb.platform.common.exception.BusinessRuleViolationException;
 import com.dbwb.platform.manager.entity.Permission;
 import com.dbwb.platform.menu.repository.MenuItemRepository;
 import com.dbwb.platform.security.AuthenticatedAccount;
 import com.dbwb.platform.subscription.SubscriptionQueryService;
 import com.dbwb.platform.website.WebsiteAccessGuard;
+import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Instant;
+import java.time.temporal.ChronoUnit;
 import java.time.LocalDate;
 import java.time.ZoneOffset;
 import java.util.ArrayList;
@@ -31,37 +34,78 @@ public class AnalyticsService {
     private final MenuItemRepository menuItemRepository;
     private final WebsiteAccessGuard accessGuard;
     private final SubscriptionQueryService subscriptionQueryService;
+    private final BusinessRuleProperties businessRules;
+    private final AnalyticsWriteBuffer writeBuffer;
 
     public AnalyticsService(
             AnalyticsEventRepository repository,
             MenuItemRepository menuItemRepository,
             WebsiteAccessGuard accessGuard,
-            SubscriptionQueryService subscriptionQueryService) {
+            SubscriptionQueryService subscriptionQueryService,
+            BusinessRuleProperties businessRules,
+            AnalyticsWriteBuffer writeBuffer) {
         this.repository = repository;
         this.menuItemRepository = menuItemRepository;
         this.accessGuard = accessGuard;
         this.subscriptionQueryService = subscriptionQueryService;
+        this.businessRules = businessRules;
+        this.writeBuffer = writeBuffer;
     }
 
-    /** BR-AN-002: every visit is counted, including Owner/Manager traffic - no exclusion in MVP. */
+    /**
+     * Discards events past the retention window.
+     *
+     * The table had none: a row per visit and per item view, kept forever, on
+     * a path with no other bound. Retention is configured rather than fixed
+     * here (dbwb.business-rules.analytics-event-retention-days), and a value of
+     * zero or less disables the purge entirely rather than deleting everything
+     * - a missing setting must not silently destroy a customer's history.
+     */
     @Transactional
+    public int purgeExpiredEvents() {
+        int retentionDays = businessRules.getAnalyticsEventRetentionDays();
+        if (retentionDays <= 0) {
+            return 0;
+        }
+        return repository.deleteOlderThan(Instant.now().minus(retentionDays, ChronoUnit.DAYS));
+    }
+
+    /**
+     * BR-AN-002: every visit is counted, including Owner/Manager traffic - no
+     * exclusion in MVP.
+     *
+     * Written on a background thread rather than in the request. A visitor
+     * waiting on a page should not also wait on an INSERT nobody is going to
+     * read for days, and an analytics table under load should slow the numbers
+     * down, not the pages.
+     *
+     * It is no longer @Async either. Off the request thread was the easy half;
+     * the write still took a connection out of the pool the pages are served
+     * from, one per visit, and the executor's saturation policy handed the
+     * insert back to the visitor's own thread once its queue filled. Both are
+     * gone: this is an enqueue, and AnalyticsWriteBuffer writes in batches.
+     *
+     * Losing the odd row if the process dies mid-write is an accepted trade: a
+     * visit count is a trend, not a ledger. Anything that had to balance would
+     * not belong on this path.
+     */
     public void recordPageView(UUID websiteId, String referralSource, DeviceType deviceType) {
         AnalyticsEvent event = new AnalyticsEvent();
         event.setWebsiteId(websiteId);
         event.setEventType(AnalyticsEventType.PAGE_VIEW);
         event.setReferralSource(referralSource);
         event.setDeviceType(deviceType);
-        repository.save(event);
+        writeBuffer.record(event);
     }
 
-    @Transactional
+    /** Same reasoning as recordPageView: off the request, and cheap to lose. */
     public void recordItemView(UUID websiteId, UUID itemId, DeviceType deviceType) {
         AnalyticsEvent event = new AnalyticsEvent();
         event.setWebsiteId(websiteId);
         event.setEventType(AnalyticsEventType.ITEM_VIEW);
         event.setItemId(itemId);
         event.setDeviceType(deviceType);
-        repository.save(event);
+        writeBuffer.record(event);
     }
 
     @Transactional(readOnly = true)

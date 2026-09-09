@@ -2,6 +2,7 @@ package com.dbwb.platform.website;
 
 import com.dbwb.platform.account.entity.Role;
 import com.dbwb.platform.audit.AuditService;
+import com.dbwb.platform.common.config.CacheConfig;
 import com.dbwb.platform.common.exception.BusinessRuleViolationException;
 import com.dbwb.platform.common.exception.ResourceNotFoundException;
 import com.dbwb.platform.manager.entity.InvitationStatus;
@@ -27,11 +28,14 @@ import com.dbwb.platform.website.entity.WebsiteStatus;
 import com.dbwb.platform.website.repository.BusinessWebsiteRepository;
 import com.dbwb.platform.menu.repository.CategoryRepository;
 import com.dbwb.platform.account.repository.AccountRepository;
+import org.springframework.cache.annotation.CacheEvict;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Instant;
 import java.util.ArrayList;
+import com.dbwb.platform.plan.entity.Plan;
+import java.util.Optional;
 import java.util.List;
 import java.util.Set;
 import java.util.UUID;
@@ -57,6 +61,8 @@ public class WebsiteService {
     private final PublicWebsiteService publicWebsiteService;
     private final ManagerAccessRepository managerAccessRepository;
     private final ThemeConfigValidator themeConfigValidator;
+    private final com.dbwb.platform.plan.TemplateAvailability templateAvailability;
+    private final com.dbwb.platform.common.config.BusinessRuleProperties businessRules;
 
     public WebsiteService(
             BusinessWebsiteRepository websiteRepository,
@@ -72,7 +78,9 @@ public class WebsiteService {
             AuditService auditService,
             PublicWebsiteService publicWebsiteService,
             ManagerAccessRepository managerAccessRepository,
-            ThemeConfigValidator themeConfigValidator) {
+            ThemeConfigValidator themeConfigValidator,
+            com.dbwb.platform.plan.TemplateAvailability templateAvailability,
+            com.dbwb.platform.common.config.BusinessRuleProperties businessRules) {
         this.websiteRepository = websiteRepository;
         this.themeRepository = themeRepository;
         this.accountRepository = accountRepository;
@@ -87,6 +95,8 @@ public class WebsiteService {
         this.publicWebsiteService = publicWebsiteService;
         this.themeConfigValidator = themeConfigValidator;
         this.managerAccessRepository = managerAccessRepository;
+        this.templateAvailability = templateAvailability;
+        this.businessRules = businessRules;
     }
 
     /** Phase 4: a website plus the caller's role/permissions on it, so the frontend can gate UI without re-deriving access logic. */
@@ -95,9 +105,13 @@ public class WebsiteService {
 
     @Transactional
     public BusinessWebsite create(AuthenticatedAccount caller, CreateWebsiteRequest request) {
-        // NOTE: "number of websites per Business Owner determined by plan" (7.2) is
-        // listed as TBD-003 in the BRD (exact feature/limit matrix not finalized).
-        // Enforce here once that matrix is approved - intentionally not hardcoded.
+        requireRoomForAnotherWebsite(caller);
+
+        // Nothing of this kind on offer means the layout would fall back to
+        // LayoutVariant.defaultFor(), which may itself be a withdrawn template -
+        // so the website would be created straight onto something the owner was
+        // never allowed to pick.
+        templateAvailability.requireAnyOffered(request.templateType());
 
         BusinessWebsite website = new BusinessWebsite();
         website.setOwner(accountRepository.getReferenceById(caller.accountId()));
@@ -185,6 +199,17 @@ public class WebsiteService {
      * On success, promotes draft -> published and retains exactly one prior
      * published version (BR-THEME-007).
      */
+    /**
+     * Evicts the public page, on top of the few seconds the cache would have
+     * expired in anyway. Publishing is the one change an owner consciously
+     * waits on - they press it and go and look - so it is worth being exact
+     * about, where an edit to a price can ride the expiry.
+     *
+     * allEntries because the key is the slug and this method has the id; the
+     * cache is small and this happens rarely, so clearing it is cheaper than
+     * carrying a slug around to be precise about.
+     */
+    @CacheEvict(value = CacheConfig.PUBLIC_WEBSITES, allEntries = true)
     @Transactional
     public BusinessWebsite publish(UUID websiteId, AuthenticatedAccount caller) {
         BusinessWebsite website = accessGuard.requirePermission(
@@ -259,6 +284,12 @@ public class WebsiteService {
             throw new BusinessRuleViolationException(
                     "\"" + layoutVariant + "\" is not a valid layout for a " + website.getTemplateType() + " website.");
         }
+        // Re-selecting the template the website is already on is always allowed:
+        // withdrawing a template must not trap its existing sites, and this call
+        // would then be the only way they could never save this screen again.
+        if (layoutVariant != website.getEffectiveLayoutVariant()) {
+            templateAvailability.requireOffered(layoutVariant);
+        }
         website.setLayoutVariant(layoutVariant);
         // Switching to a cart-less layout is itself the "this is a read-only
         // menu" decision - the owner never has to also find an ordering switch.
@@ -269,6 +300,8 @@ public class WebsiteService {
     }
 
     /** BR-THEME-007: restore the immediately previous published version. */
+    /** Same reasoning as publish: an owner rolling back is watching for it. */
+    @CacheEvict(value = CacheConfig.PUBLIC_WEBSITES, allEntries = true)
     @Transactional
     public BusinessWebsite restorePreviousVersion(UUID websiteId, AuthenticatedAccount caller) {
         BusinessWebsite website = accessGuard.requirePermission(
@@ -283,6 +316,44 @@ public class WebsiteService {
         return website;
     }
 
+    /**
+     * BRD 7.2: how many websites one owner may have.
+     *
+     * Left unenforced until now - the note here said to add it once the plan
+     * matrix (TBD-003) was approved, and it never was, so creation was
+     * unlimited for anyone with an account. Rather than wait longer for a
+     * decision that has not come, the number is configuration: an owner with no
+     * active plan gets dbwb.business-rules.default-websites-per-owner, and an
+     * owner who holds plans gets the largest maxWebsites among them, so the
+     * matrix takes over the moment it exists. Setting it to zero restores the
+     * old unlimited behaviour.
+     *
+     * Trashed and deleted websites do not count against it - the limit is on
+     * what an owner is running, not on what they have ever made.
+     */
+    private void requireRoomForAnotherWebsite(AuthenticatedAccount caller) {
+        List<BusinessWebsite> live = websiteRepository.findByOwnerId(caller.accountId()).stream()
+                .filter(website -> website.getStatus() != WebsiteStatus.DELETED
+                        && website.getStatus() != WebsiteStatus.TRASHED)
+                .toList();
+
+        int allowance = live.stream()
+                .map(website -> subscriptionQueryService.getActivePlan(website.getId()))
+                .flatMap(Optional::stream)
+                .mapToInt(Plan::getMaxWebsites)
+                .max()
+                .orElse(businessRules.getDefaultWebsitesPerOwner());
+
+        if (allowance <= 0) {
+            return;
+        }
+        if (live.size() >= allowance) {
+            throw new BusinessRuleViolationException(
+                    "Your plan covers " + allowance + " website" + (allowance == 1 ? "" : "s")
+                            + ". Upgrade, or delete one you are no longer using, to add another.");
+        }
+    }
+
     private void validateMandatoryPublicationFields(BusinessWebsite website) {
         // BR-THEME-006: business name, required contact/ordering data, at least
         // one menu category+item, and complete theme configuration as applicable.
@@ -295,14 +366,32 @@ public class WebsiteService {
             throw new BusinessRuleViolationException("Business profile/contact information is required before publishing.");
         }
 
-        if (website.getTemplateType() == TemplateType.PORTFOLIO) {
-            if (serviceItemRepository.countByWebsiteId(website.getId()) == 0) {
-                throw new BusinessRuleViolationException("At least one service is required before publishing.");
+        // A switch rather than "portfolio or else menu": that else meant any new
+        // template type silently inherited the menu's rule and demanded a menu
+        // category before it could publish.
+        switch (website.getTemplateType()) {
+            case PORTFOLIO -> {
+                if (serviceItemRepository.countByWebsiteId(website.getId()) == 0) {
+                    throw new BusinessRuleViolationException("At least one service is required before publishing.");
+                }
             }
-        } else {
-            long categoryCount = categoryRepository.countByWebsiteId(website.getId());
-            if (categoryCount == 0) {
-                throw new BusinessRuleViolationException("At least one menu category and item is required before publishing.");
+            case EVENTS -> {
+                // Nothing beyond the name and contact details checked above. An
+                // invitation with only a date and a photograph is complete; the
+                // running order and the gallery are both genuinely optional.
+            }
+            case MENU_ORDERING -> {
+                if (categoryRepository.countByWebsiteId(website.getId()) == 0) {
+                    throw new BusinessRuleViolationException("At least one menu category and item is required before publishing.");
+                }
+            }
+            case STORE -> {
+                // The same table as the menu's, and the same rule: a shop with
+                // nothing in it is not a shop. Worded as a shop owner would
+                // word it, since nothing in their console says "category".
+                if (categoryRepository.countByWebsiteId(website.getId()) == 0) {
+                    throw new BusinessRuleViolationException("At least one collection and product is required before publishing.");
+                }
             }
         }
 
