@@ -144,6 +144,11 @@ dbwb:
     storage: ${UPLOAD_STORAGE:local}
     directory: ${UPLOAD_DIRECTORY:uploads}
     max-file-size-mb: ${UPLOAD_MAX_FILE_SIZE_MB:5}
+    # Total storage one account may use, across every website it owns. The
+    # per-file limit above bounds a single upload and the rate limit bounds how
+    # fast they arrive; neither bounds the total, which is what the bucket bill
+    # is charged on. 0 turns the check off.
+    quota-mb: ${UPLOAD_QUOTA_MB:500}
     r2:
       account-id: ${R2_ACCOUNT_ID:}
       bucket: ${R2_BUCKET:}

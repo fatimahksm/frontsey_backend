@@ -1,6 +1,8 @@
 package com.dbwb.platform.upload;
 
 import com.dbwb.platform.common.exception.BusinessRuleViolationException;
+import com.dbwb.platform.upload.entity.UploadedImage;
+import com.dbwb.platform.upload.repository.UploadedImageRepository;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -8,9 +10,15 @@ import org.springframework.mock.web.MockMultipartFile;
 
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.when;
 
 class UploadServiceTest {
 
@@ -18,13 +26,35 @@ class UploadServiceTest {
     Path tempDir;
 
     private UploadService uploadService;
+    private UploadProperties properties;
+
+    /**
+     * The rows a real repository would hold, so the quota sum is computed from
+     * what was actually saved rather than from a number the test hands back.
+     * A stub that always answered zero would pass every quota test there is.
+     */
+    private final List<UploadedImage> stored = new ArrayList<>();
 
     @BeforeEach
     void setUp() {
-        UploadProperties properties = new UploadProperties();
+        properties = new UploadProperties();
         properties.setDirectory(tempDir.toString());
         properties.setMaxFileSizeMb(1);
-        uploadService = new UploadService(properties, new LocalDiskImageStorage(properties));
+        uploadService = new UploadService(properties, new LocalDiskImageStorage(properties), fakeRepository());
+    }
+
+    private UploadedImageRepository fakeRepository() {
+        UploadedImageRepository repository = mock(UploadedImageRepository.class);
+        when(repository.save(any(UploadedImage.class))).thenAnswer(call -> {
+            UploadedImage image = call.getArgument(0);
+            stored.add(image);
+            return image;
+        });
+        when(repository.totalBytesForAccount(any())).thenAnswer(call -> stored.stream()
+                .filter(image -> image.getAccountId().equals(call.getArgument(0)))
+                .mapToLong(UploadedImage::getByteSize)
+                .sum());
+        return repository;
     }
 
     /** Real leading bytes for each format - what the service now actually looks at. */
@@ -214,5 +244,93 @@ class UploadServiceTest {
                 .isInstanceOf(BusinessRuleViolationException.class)
                 .hasMessageContaining("JPEG, PNG, WEBP, or GIF")
                 .hasMessageNotContaining("iPhone");
+    }
+
+    // --- the storage quota (BR: an account's uploads are not unbounded) ---
+
+    /**
+     * Nothing metered uploads before this. An account could post a file every
+     * few seconds for as long as it existed, and the only ceiling was the rate
+     * limit's hundred an hour - a limit on speed, not on total.
+     */
+    @Test
+    void refusesAnUploadThatWouldExceedTheAccountsQuota() {
+        UUID account = UUID.randomUUID();
+        // A quota of one megabyte and a file size limit of one, so the second
+        // upload of a full-size file is the one over the line.
+        properties.setQuotaMb(1);
+        byte[] nearlyAMegabyte = padded(JPEG_HEADER, 900_000);
+
+        uploadService.storeImage(new MockMultipartFile("file", "a.jpg", "image/jpeg", nearlyAMegabyte), null, account);
+
+        assertThatThrownBy(() -> uploadService.storeImage(
+                new MockMultipartFile("file", "b.jpg", "image/jpeg", nearlyAMegabyte), null, account))
+                .isInstanceOf(BusinessRuleViolationException.class)
+                // One decimal place on purpose: whole megabytes made this read
+                // "you have used 0MB" when 900KB of a 1MB quota was gone.
+                .hasMessageContaining("past your 1MB of image storage")
+                .hasMessageContaining("you have used 0.9MB");
+    }
+
+    @Test
+    void oneAccountFillingItsQuotaDoesNotAffectAnother() {
+        properties.setQuotaMb(1);
+        byte[] nearlyAMegabyte = padded(JPEG_HEADER, 900_000);
+        UUID first = UUID.randomUUID();
+        uploadService.storeImage(new MockMultipartFile("file", "a.jpg", "image/jpeg", nearlyAMegabyte), null, first);
+
+        assertThat(uploadService.storeImage(
+                new MockMultipartFile("file", "b.jpg", "image/jpeg", nearlyAMegabyte), null, UUID.randomUUID()))
+                .endsWith(".jpg");
+    }
+
+    @Test
+    void countsTheSmallCopyToo() {
+        UUID account = UUID.randomUUID();
+        MockMultipartFile file = new MockMultipartFile("file", "photo.jpg", "image/jpeg", padded(JPEG_HEADER, 5_000));
+        MockMultipartFile thumbnail = new MockMultipartFile("thumbnail", "photo.jpg", "image/jpeg", padded(JPEG_HEADER, 800));
+
+        uploadService.storeImage(file, thumbnail, account);
+
+        // Two objects in the bucket, so two rows: counting only originals would
+        // under-report what the account is storing.
+        assertThat(stored).hasSize(2);
+        assertThat(stored).extracting(UploadedImage::getByteSize).containsExactly(5_000L, 800L);
+    }
+
+    @Test
+    void aQuotaOfZeroMeansNoQuota() {
+        properties.setQuotaMb(0);
+        UUID account = UUID.randomUUID();
+        byte[] nearlyAMegabyte = padded(JPEG_HEADER, 900_000);
+
+        uploadService.storeImage(new MockMultipartFile("file", "a.jpg", "image/jpeg", nearlyAMegabyte), null, account);
+
+        assertThat(uploadService.storeImage(
+                new MockMultipartFile("file", "b.jpg", "image/jpeg", nearlyAMegabyte), null, account))
+                .endsWith(".jpg");
+    }
+
+    /**
+     * An internal caller with no account - a seeder, or the two-argument
+     * overload the older call sites still use - is not metered, and must not
+     * be refused for having no quota to spend.
+     */
+    @Test
+    void anUploadWithNoAccountIsNotMetered() {
+        properties.setQuotaMb(1);
+        byte[] nearlyAMegabyte = padded(JPEG_HEADER, 900_000);
+
+        uploadService.storeImage(new MockMultipartFile("file", "a.jpg", "image/jpeg", nearlyAMegabyte));
+        assertThat(uploadService.storeImage(new MockMultipartFile("file", "b.jpg", "image/jpeg", nearlyAMegabyte)))
+                .endsWith(".jpg");
+        assertThat(stored).isEmpty();
+    }
+
+    /** A real header followed by filler, so the bytes are a valid JPEG of a chosen size. */
+    private static byte[] padded(byte[] header, int totalSize) {
+        byte[] bytes = new byte[totalSize];
+        System.arraycopy(header, 0, bytes, 0, header.length);
+        return bytes;
     }
 }
