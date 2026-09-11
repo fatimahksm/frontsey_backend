@@ -48,6 +48,7 @@ class PublicWebsiteServiceTest {
     @Mock private ServiceItemRepository serviceItemRepository;
     @Mock private PageSectionRepository pageSectionRepository;
     @Mock private com.dbwb.platform.portfolio.repository.PortfolioProjectRepository portfolioProjectRepository;
+    @Mock private com.dbwb.platform.portfolio.repository.ExperienceEntryRepository experienceEntryRepository;
     @Mock private com.dbwb.platform.events.repository.EventDetailsRepository eventDetailsRepository;
     @Mock private com.dbwb.platform.events.repository.EventScheduleEntryRepository eventScheduleEntryRepository;
     @Mock private ThemeConfigValidator themeConfigValidator;
@@ -60,7 +61,7 @@ class PublicWebsiteServiceTest {
                 websiteRepository, profileRepository, openingHoursRepository, categoryRepository, menuItemRepository,
                 sizeVariantRepository, addonGroupRepository, addonRepository, boxVariantRepository,
                 deliveryAreaRepository, galleryImageRepository, seoMetadataRepository, serviceItemRepository,
-                pageSectionRepository, themeConfigValidator, portfolioProjectRepository,
+                pageSectionRepository, themeConfigValidator, portfolioProjectRepository, experienceEntryRepository,
                 eventDetailsRepository, eventScheduleEntryRepository);
     }
 
