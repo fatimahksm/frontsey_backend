@@ -42,23 +42,44 @@ import java.util.function.Function;
 public class RateLimitFilter extends OncePerRequestFilter {
 
     /** One capped endpoint: how to recognise it, what it costs, and what counts as "the same caller". */
-    private record Rule(String method, String pathPrefix,
+    private record Rule(String method, String pathPrefix, String pathContains,
                         Function<RateLimitProperties, RateLimitProperties.Policy> policy,
                         boolean perAccount, String name) {
 
+        static Rule of(String method, String pathPrefix,
+                       Function<RateLimitProperties, RateLimitProperties.Policy> policy,
+                       boolean perAccount, String name) {
+            return new Rule(method, pathPrefix, null, policy, perAccount, name);
+        }
+
         boolean matches(HttpServletRequest request) {
-            return method.equals(request.getMethod()) && request.getRequestURI().startsWith(pathPrefix);
+            String uri = request.getRequestURI();
+            return method.equals(request.getMethod())
+                    && uri.startsWith(pathPrefix)
+                    && (pathContains == null || uri.contains(pathContains));
         }
     }
 
+    /**
+     * First match wins, and the two public POSTs are ordered accordingly.
+     *
+     * Counting a visit is a POST now rather than a side effect of the GET (see
+     * PublicWebsiteController), and both beacons sit under the same prefix and
+     * both end in "/view" - so the item one is matched on the "/items/" in its
+     * own path and listed first, and the page one takes what is left. The page
+     * beacon has to keep the page-view allowance, four times the item one: a
+     * shared address - an office, a cafe, a carrier's NAT - is many people
+     * reading one site.
+     */
     private static final List<Rule> RULES = List.of(
-            new Rule("POST", "/api/auth/login", RateLimitProperties::getLogin, false, "login"),
-            new Rule("POST", "/api/auth/register", RateLimitProperties::getRegistration, false, "registration"),
-            new Rule("POST", "/api/auth/password-reset/request", RateLimitProperties::getPasswordReset, false, "password-reset"),
-            new Rule("POST", "/api/ai/", RateLimitProperties::getAiSuggestions, true, "ai"),
-            new Rule("POST", "/api/uploads/", RateLimitProperties::getUploads, true, "uploads"),
-            new Rule("POST", "/api/public/websites/", RateLimitProperties::getPublicItemView, false, "item-view"),
-            new Rule("GET", "/api/public/websites/", RateLimitProperties::getPublicPageView, false, "page-view"));
+            Rule.of("POST", "/api/auth/login", RateLimitProperties::getLogin, false, "login"),
+            Rule.of("POST", "/api/auth/register", RateLimitProperties::getRegistration, false, "registration"),
+            Rule.of("POST", "/api/auth/password-reset/request", RateLimitProperties::getPasswordReset, false, "password-reset"),
+            Rule.of("POST", "/api/ai/", RateLimitProperties::getAiSuggestions, true, "ai"),
+            Rule.of("POST", "/api/uploads/", RateLimitProperties::getUploads, true, "uploads"),
+            new Rule("POST", "/api/public/websites/", "/items/", RateLimitProperties::getPublicItemView, false, "item-view"),
+            Rule.of("POST", "/api/public/websites/", RateLimitProperties::getPublicPageView, false, "page-view"),
+            Rule.of("GET", "/api/public/websites/", RateLimitProperties::getPublicPageView, false, "page-view"));
 
     private final RateLimitProperties properties;
     private final RateLimiter rateLimiter;
