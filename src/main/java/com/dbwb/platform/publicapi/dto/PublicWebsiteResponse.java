@@ -48,6 +48,13 @@ public record PublicWebsiteResponse(
          * is always a list and never null.
          */
         List<PublicProject> projects,
+        /**
+         * The owner's work history, in their order, for the PORTFOLIO
+         * templates that show a timeline. Empty on every other kind of site
+         * and on a portfolio that has not added one, so it is always a list
+         * and never null.
+         */
+        List<PublicExperience> experience,
         /** Populated only for TemplateType.EVENTS; null on every other kind of website. */
         PublicEvent event,
         /** The running order of the day, in the host's order. Empty for every non-EVENTS site. */
@@ -111,6 +118,16 @@ public record PublicWebsiteResponse(
             String imageUrl,
             String liveUrl,
             String repoUrl
+    ) {
+    }
+
+    /** One line of work history - "2021-24 · Lead designer · Studio Beirut". */
+    public record PublicExperience(
+            String id,
+            String role,
+            String company,
+            String year,
+            String detail
     ) {
     }
 }

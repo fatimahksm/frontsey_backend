@@ -1,9 +1,11 @@
-# Portfolio projects: progress and what is left
+# Portfolio projects and experience: done
 
-Handover for the feature that gives Portfolio templates real project data
-instead of free-form JSON nobody can edit.
+What gives the Portfolio templates real project and work-history data instead
+of free-form JSON nobody could edit. Everything listed here is built; the
+sections below are kept as the record of what was done and the traps found
+along the way.
 
-## Done (backend only)
+## Done (backend)
 
 - `V15__portfolio_projects.sql` - new table, `ON DELETE CASCADE` from the
   website. Every column but `name` is nullable.
@@ -27,19 +29,38 @@ portfolios with no projects simply get an empty list.
    covers the ownership check on update and delete, reorder (including ids from
    another website, which are ignored), and append-to-end sort order.
    `PortfolioProjectRepositoryTest` persists a row for real.
-2. `experience_entries` - same shape (year, role, company, detail, sortOrder),
-   same CRUD. Not started.
+2. ~~`experience_entries`~~ - done. `V25__experience_entries.sql`, the
+   `ExperienceEntry` entity, repository, request/response records,
+   `ExperienceEntryService` and a controller at
+   `/api/websites/{websiteId}/experience`, with the same five endpoints and the
+   same tenant re-check on every write. `PublicWebsiteResponse.experience[]` is
+   populated alongside `projects[]`. `ExperienceEntryServiceTest` covers the
+   ownership check on update and delete, append-to-end order, and a reorder
+   that ignores another site's ids; removing the check fails two of its seven.
+   `ExperienceEntryRepositoryTest` persists a row for real, per the warning
+   below - the column is `entry_year`, for the reason V18 renamed the projects
+   one.
 
-**Frontend** (nothing done at all)
-3. `PublicWebsiteResponse` type: add `projects: PublicProject[]`.
-4. `lib/api/projects.ts` - client for the five endpoints.
-5. Dashboard **Projects** page: list, add, edit, delete, reorder, image upload
-   (reuse `ImageUploadField` and the gallery page's patterns).
-6. Add it to `WebsiteShell` nav, gated to `templateType === "PORTFOLIO"`.
-7. Point the four templates at `data.projects` instead of
-   `extra.ABOUT.projectMeta` / `workMeta` / `caseMeta`, keeping the old read as
-   a fallback so the samples keep working until they are migrated.
-8. Move the four sample sites onto the new field.
+**Frontend** - all done.
+3. ~~`PublicWebsiteResponse` type~~ - `projects` and `experience` both there.
+4. ~~Clients~~ - `lib/api/projects.ts` and `lib/api/experience.ts`.
+5. ~~Editors~~ - `/manage/{id}/projects` and `/manage/{id}/experience`: list,
+   add, edit, delete, reorder, and an image upload on projects.
+6. ~~Nav~~ - both come from the template's own content plan
+   (`lib/website/template-content.ts`), so Experience appears only on the two
+   layouts that render a timeline, under the name that template uses. Both the
+   setup shell and the site console read that plan.
+7. ~~Templates~~ - they read `data.projects` and `site.experience`, falling
+   back to the old section JSON when a site has none, so anything saved before
+   these editors existed renders exactly as it did.
+8. ~~Samples~~ - the developer sample carries its history on the new field and
+   the freelancer sample deliberately keeps its own in the old section payload,
+   which keeps both paths under test in the browser suite.
+
+Note while doing 6: `app/s/[slug]/[section]/page.tsx` had no editor registered
+for `event`, so the console's own sidebar offered the link and the link
+redirected straight back to the dashboard. Every key a content plan can name
+needs an entry in that map, or the nav lies.
 
 ## Warnings for whoever continues
 

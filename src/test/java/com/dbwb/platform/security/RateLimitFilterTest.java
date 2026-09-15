@@ -133,6 +133,33 @@ class RateLimitFilterTest {
                 new UsernamePasswordAuthenticationToken(principal, null, List.of()));
     }
 
+    /**
+     * The two public beacons share a prefix and both end in "/view", so which
+     * allowance each gets is decided by rule order and by the "/items/" in the
+     * item one's own path. Getting that backwards would quietly give page
+     * views the item budget - a quarter of the size - and start refusing
+     * visitors from any shared address.
+     */
+    @Test
+    void theTwoPublicBeaconsGetTheirOwnAllowances() throws Exception {
+        properties.setPublicItemView(new RateLimitProperties.Policy(2, 1));
+        properties.setPublicPageView(new RateLimitProperties.Policy(8, 1));
+
+        for (int i = 0; i < 2; i++) {
+            assertThat(request("POST", "/api/public/websites/a-shop/items/" + UUID.randomUUID() + "/view", "203.0.113.5")
+                    .getStatus()).isEqualTo(200);
+        }
+        assertThat(request("POST", "/api/public/websites/a-shop/items/" + UUID.randomUUID() + "/view", "203.0.113.5")
+                .getStatus()).isEqualTo(429);
+
+        // The page beacon has its own, larger allowance and is untouched by
+        // the item one having been spent.
+        for (int i = 0; i < 8; i++) {
+            assertThat(request("POST", "/api/public/websites/a-shop/view", "203.0.113.5").getStatus()).isEqualTo(200);
+        }
+        assertThat(request("POST", "/api/public/websites/a-shop/view", "203.0.113.5").getStatus()).isEqualTo(429);
+    }
+
     private MockHttpServletResponse login(String address) throws Exception {
         return request("POST", "/api/auth/login", address);
     }

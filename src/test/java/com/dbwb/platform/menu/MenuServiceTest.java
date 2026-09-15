@@ -15,6 +15,11 @@ import com.dbwb.platform.security.AuthenticatedAccount;
 import com.dbwb.platform.testsupport.TestEntities;
 import com.dbwb.platform.website.WebsiteAccessGuard;
 import com.dbwb.platform.website.entity.BusinessWebsite;
+import com.dbwb.platform.common.exception.ResourceNotFoundException;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageImpl;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Pageable;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -29,6 +34,7 @@ import java.util.Optional;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.Mockito.never;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
@@ -199,6 +205,75 @@ class MenuServiceTest {
         category.setWebsite(website);
         category.setName("Drinks");
         return TestEntities.withId(category, UUID.randomUUID());
+    }
+
+    // --- one item, and one page of them ---
+
+    @Test
+    void getItemReturnsTheItemWhenItBelongsToThisWebsite() {
+        MenuItem item = itemWithId();
+        when(menuItemRepository.findById(item.getId())).thenReturn(Optional.of(item));
+
+        assertThat(menuService.getItem(websiteId, item.getId(), caller)).isSameAs(item);
+    }
+
+    /**
+     * The id is in the URL and the URL is guessable, so the item's own website
+     * decides - not the one the caller put in the path. Without this, an owner
+     * who can read their own website could read any item on the platform by
+     * pasting its id into their own address.
+     */
+    @Test
+    void getItemRefusesAnItemThatBelongsToAnotherWebsite() {
+        MenuItem someoneElses = new MenuItem();
+        someoneElses.setWebsite(TestEntities.withId(new BusinessWebsite(), UUID.randomUUID()));
+        someoneElses.setName("Not yours");
+        someoneElses.setPrice(BigDecimal.ONE);
+        MenuItem stored = TestEntities.withId(someoneElses, UUID.randomUUID());
+        when(menuItemRepository.findById(stored.getId())).thenReturn(Optional.of(stored));
+
+        assertThatThrownBy(() -> menuService.getItem(websiteId, stored.getId(), caller))
+                .isInstanceOf(ResourceNotFoundException.class);
+    }
+
+    @Test
+    void getItemRefusesAnItemInTheTrash() {
+        MenuItem item = itemWithId();
+        item.setTrashedAt(java.time.Instant.now());
+        when(menuItemRepository.findById(item.getId())).thenReturn(Optional.of(item));
+
+        assertThatThrownBy(() -> menuService.getItem(websiteId, item.getId(), caller))
+                .isInstanceOf(ResourceNotFoundException.class);
+    }
+
+    @Test
+    void listItemsAsksTheDatabaseForOnePageRatherThanEverything() {
+        Pageable firstPage = PageRequest.of(0, 50);
+        when(menuItemRepository.findByWebsiteIdAndTrashedAtIsNull(websiteId, firstPage))
+                .thenReturn(new PageImpl<>(List.of(itemWithId()), firstPage, 500));
+
+        Page<MenuItem> page = menuService.listItems(websiteId, caller, null, null, firstPage);
+
+        // The point of the change: one row back, and the size of the whole list
+        // known without having fetched it.
+        assertThat(page.getContent()).hasSize(1);
+        assertThat(page.getTotalElements()).isEqualTo(500);
+        verify(menuItemRepository, never()).findByWebsiteIdAndTrashedAtIsNull(websiteId);
+    }
+
+    @Test
+    void listItemsPagesWithinACategoryAndWithinASearch() {
+        Pageable firstPage = PageRequest.of(0, 10);
+        when(menuItemRepository.findByWebsiteIdAndCategoryIdAndTrashedAtIsNull(eq(websiteId), any(), eq(firstPage)))
+                .thenReturn(new PageImpl<>(List.of(), firstPage, 0));
+        when(menuItemRepository.findByWebsiteIdAndNameContainingIgnoreCaseAndTrashedAtIsNull(websiteId, "tea", firstPage))
+                .thenReturn(new PageImpl<>(List.of(), firstPage, 0));
+
+        menuService.listItems(websiteId, caller, UUID.randomUUID(), null, firstPage);
+        menuService.listItems(websiteId, caller, null, "tea", firstPage);
+
+        verify(menuItemRepository).findByWebsiteIdAndCategoryIdAndTrashedAtIsNull(eq(websiteId), any(), eq(firstPage));
+        verify(menuItemRepository).findByWebsiteIdAndNameContainingIgnoreCaseAndTrashedAtIsNull(websiteId, "tea", firstPage);
     }
 
     private MenuItem itemWithId() {

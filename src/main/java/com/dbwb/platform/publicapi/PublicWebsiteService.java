@@ -25,6 +25,7 @@ import com.dbwb.platform.publicapi.dto.PublicMenuItem;
 import com.dbwb.platform.publicapi.dto.PublicWebsiteResponse;
 import com.dbwb.platform.theme.ThemeConfigValidator;
 import com.dbwb.platform.portfolio.dto.PortfolioProjectResponse;
+import com.dbwb.platform.portfolio.repository.ExperienceEntryRepository;
 import com.dbwb.platform.portfolio.repository.PortfolioProjectRepository;
 import com.dbwb.platform.theme.dto.ThemeConfig;
 import com.dbwb.platform.website.entity.BusinessWebsite;
@@ -67,6 +68,7 @@ public class PublicWebsiteService {
     private final PageSectionRepository pageSectionRepository;
     private final ThemeConfigValidator themeConfigValidator;
     private final PortfolioProjectRepository portfolioProjectRepository;
+    private final ExperienceEntryRepository experienceEntryRepository;
     private final EventDetailsRepository eventDetailsRepository;
     private final EventScheduleEntryRepository eventScheduleEntryRepository;
 
@@ -87,6 +89,7 @@ public class PublicWebsiteService {
             PageSectionRepository pageSectionRepository,
             ThemeConfigValidator themeConfigValidator,
             PortfolioProjectRepository portfolioProjectRepository,
+            ExperienceEntryRepository experienceEntryRepository,
             EventDetailsRepository eventDetailsRepository,
             EventScheduleEntryRepository eventScheduleEntryRepository) {
         this.websiteRepository = websiteRepository;
@@ -105,6 +108,7 @@ public class PublicWebsiteService {
         this.pageSectionRepository = pageSectionRepository;
         this.themeConfigValidator = themeConfigValidator;
         this.portfolioProjectRepository = portfolioProjectRepository;
+        this.experienceEntryRepository = experienceEntryRepository;
         this.eventDetailsRepository = eventDetailsRepository;
         this.eventScheduleEntryRepository = eventScheduleEntryRepository;
     }
@@ -251,6 +255,13 @@ public class PublicWebsiteService {
                         PortfolioProjectResponse.splitTags(p.getTags()), p.getImageUrl(), p.getLiveUrl(), p.getRepoUrl()))
                 .toList();
 
+        List<PublicWebsiteResponse.PublicExperience> experience = experienceEntryRepository
+                .findByWebsiteIdOrderBySortOrder(website.getId()).stream()
+                .map(entry -> new PublicWebsiteResponse.PublicExperience(
+                        entry.getId().toString(), entry.getRole(), entry.getCompany(),
+                        entry.getYear(), entry.getDetail()))
+                .toList();
+
         // Null on every non-EVENTS site, and on an EVENTS site nobody has filled
         // in yet - the template renders whatever is there and hides the rest.
         PublicWebsiteResponse.PublicEvent event = eventDetailsRepository.findByWebsiteId(website.getId())
@@ -284,7 +295,7 @@ public class PublicWebsiteService {
                 website.getBusinessName(), website.getSlug(), website.getPageMode(), website.getTemplateType(),
                 website.getEffectiveLayoutVariant(), website.getOrderingMode(), website.getPrimaryLanguage(), website.getCurrency(),
                 content, profile, hours, categories, areas, services, galleryUrls, seo, sections, theme, projects,
-                event, schedule);
+                experience, event, schedule);
     }
 
     /**

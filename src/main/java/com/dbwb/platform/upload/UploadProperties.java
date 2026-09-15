@@ -26,6 +26,20 @@ public class UploadProperties {
 
     private int maxFileSizeMb = 5;
 
+    /**
+     * How much one account may store in total, across every website it owns.
+     *
+     * There was no such ceiling: the rate limit allowed a hundred 5MB uploads
+     * an hour and nothing stopped that repeating for as long as an account
+     * existed. 500MB is several thousand product photographs at the sizes the
+     * browser sends after downscaling - far more than a shop needs, and a
+     * bounded bill.
+     *
+     * 0 disables the check, for a deployment that would rather meter storage
+     * somewhere else.
+     */
+    private int quotaMb = 500;
+
     private final R2 r2 = new R2();
 
     /**
@@ -123,6 +137,14 @@ public class UploadProperties {
 
     public void setMaxFileSizeMb(int maxFileSizeMb) {
         this.maxFileSizeMb = maxFileSizeMb;
+    }
+
+    public int getQuotaMb() {
+        return quotaMb;
+    }
+
+    public void setQuotaMb(int quotaMb) {
+        this.quotaMb = quotaMb;
     }
 
     public R2 getR2() {

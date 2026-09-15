@@ -14,6 +14,8 @@ import com.dbwb.platform.menu.dto.MenuItemRequest;
 import com.dbwb.platform.security.AuthenticatedAccount;
 import com.dbwb.platform.website.WebsiteAccessGuard;
 import com.dbwb.platform.website.entity.BusinessWebsite;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -169,16 +171,50 @@ public class MenuService {
         return menuItemRepository.save(copy);
     }
 
+    /**
+     * One item, by its id.
+     *
+     * The edit screen used to fetch every item the website had and find its
+     * one in the array - which on a five-hundred-line shop is five hundred
+     * rows assembled and sent to open one form.
+     */
     @Transactional(readOnly = true)
-    public List<MenuItem> listItems(UUID websiteId, AuthenticatedAccount caller, UUID categoryFilter, String nameSearch) {
+    public MenuItem getItem(UUID websiteId, UUID itemId, AuthenticatedAccount caller) {
+        accessGuard.requireReadAccess(websiteId, caller);
+        MenuItem item = menuItemRepository.findById(itemId)
+                .orElseThrow(() -> new ResourceNotFoundException("Item not found."));
+        // The id is in the URL and the URL is guessable, so the item's own
+        // website has to be checked rather than assumed from the path.
+        if (!item.getWebsite().getId().equals(websiteId) || item.getTrashedAt() != null) {
+            throw new ResourceNotFoundException("Item not found.");
+        }
+        return item;
+    }
+
+    /**
+     * One page of the owner's items.
+     *
+     * Paged because a shop is allowed to have five hundred lines in it, and
+     * the unpaged form sent all five hundred to draw one screen - as did three
+     * other callers that wanted nothing but the count, which the page's own
+     * total now answers in a single row.
+     *
+     * The filters stay mutually exclusive, as they were: a category or a
+     * search, not both. Narrowing by both is the public site's job, where the
+     * whole menu is in the browser already.
+     */
+    @Transactional(readOnly = true)
+    public Page<MenuItem> listItems(
+            UUID websiteId, AuthenticatedAccount caller, UUID categoryFilter, String nameSearch, Pageable pageable) {
         accessGuard.requireReadAccess(websiteId, caller);
         if (categoryFilter != null) {
-            return menuItemRepository.findByWebsiteIdAndCategoryIdAndTrashedAtIsNull(websiteId, categoryFilter);
+            return menuItemRepository.findByWebsiteIdAndCategoryIdAndTrashedAtIsNull(websiteId, categoryFilter, pageable);
         }
         if (nameSearch != null && !nameSearch.isBlank()) {
-            return menuItemRepository.findByWebsiteIdAndNameContainingIgnoreCaseAndTrashedAtIsNull(websiteId, nameSearch);
+            return menuItemRepository.findByWebsiteIdAndNameContainingIgnoreCaseAndTrashedAtIsNull(
+                    websiteId, nameSearch, pageable);
         }
-        return menuItemRepository.findByWebsiteIdAndTrashedAtIsNull(websiteId);
+        return menuItemRepository.findByWebsiteIdAndTrashedAtIsNull(websiteId, pageable);
     }
 
     /** BR-MENU-011: what's currently in the trash, so the Owner has something to restore() from. */

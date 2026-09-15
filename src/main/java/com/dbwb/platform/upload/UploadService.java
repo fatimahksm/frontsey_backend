@@ -1,6 +1,8 @@
 package com.dbwb.platform.upload;
 
 import com.dbwb.platform.common.exception.BusinessRuleViolationException;
+import com.dbwb.platform.upload.entity.UploadedImage;
+import com.dbwb.platform.upload.repository.UploadedImageRepository;
 import org.springframework.stereotype.Service;
 import org.springframework.web.multipart.MultipartFile;
 
@@ -10,6 +12,7 @@ import java.io.UncheckedIOException;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.UUID;
 
 /**
  * Stores owner-uploaded images (logos, cover photos, gallery, menu items,
@@ -28,14 +31,20 @@ public class UploadService {
 
     private final UploadProperties properties;
     private final ImageStorage storage;
+    private final UploadedImageRepository uploadedImages;
 
-    public UploadService(UploadProperties properties, ImageStorage storage) {
+    public UploadService(UploadProperties properties, ImageStorage storage, UploadedImageRepository uploadedImages) {
         this.properties = properties;
         this.storage = storage;
+        this.uploadedImages = uploadedImages;
     }
 
     public String storeImage(MultipartFile file) {
-        return storeImage(file, null);
+        return storeImage(file, null, null);
+    }
+
+    public String storeImage(MultipartFile file, MultipartFile thumbnail) {
+        return storeImage(file, thumbnail, null);
     }
 
     /**
@@ -52,7 +61,7 @@ public class UploadService {
      * image where it would have loaded a small one, and refusing the owner's
      * photograph over its shrunken copy would be the worse trade.
      */
-    public String storeImage(MultipartFile file, MultipartFile thumbnail) {
+    public String storeImage(MultipartFile file, MultipartFile thumbnail, UUID accountId) {
         if (file == null || file.isEmpty()) {
             throw new BusinessRuleViolationException("No file was uploaded.");
         }
@@ -60,6 +69,8 @@ public class UploadService {
         if (file.getSize() > maxBytes) {
             throw new BusinessRuleViolationException("Image must be smaller than " + properties.getMaxFileSizeMb() + "MB.");
         }
+
+        requireRoomInQuota(accountId, file.getSize());
 
         try {
             // The declared type decides nothing. It is a header the client
@@ -91,7 +102,9 @@ public class UploadService {
             String extension = EXTENSION_BY_CONTENT_TYPE.get(detectedType);
             byte[] smallCopy = acceptableThumbnail(thumbnail, maxBytes);
             if (smallCopy == null) {
-                return storage.store(file.getBytes(), detectedType, extension);
+                String onlyKey = storage.store(file.getBytes(), detectedType, extension);
+                record(accountId, onlyKey, file.getSize(), detectedType);
+                return onlyKey;
             }
 
             // The marker goes in the original's key, not just the copy's: it is
@@ -99,9 +112,55 @@ public class UploadService {
             // marker is how a client knows a small copy exists to ask for.
             String key = storage.store(file.getBytes(), detectedType, ImageVariants.ORIGINAL_MARKER + extension);
             storage.storeAt(ImageVariants.thumbnailKey(key), smallCopy, "image/jpeg");
+            record(accountId, key, file.getSize(), detectedType);
+            // The small copy is its own object costing its own bytes, so it is
+            // its own row. Counting only originals would under-report what an
+            // account is actually storing.
+            record(accountId, ImageVariants.thumbnailKey(key), smallCopy.length, "image/jpeg");
             return key;
         } catch (IOException e) {
             throw new UncheckedIOException("Failed to store the uploaded image.", e);
+        }
+    }
+
+    /**
+     * Refuses an upload that would put the account past its storage quota.
+     *
+     * Checked against the original's size before anything is written, so the
+     * refusal costs no bucket writes. The thumbnail is not added in here: it
+     * is a fraction of the original and may yet be dropped as unacceptable, so
+     * counting it before it exists would refuse uploads that fit.
+     *
+     * A null account is an internal caller with nothing to bill - a seeder or
+     * a test - and is not metered.
+     */
+    private void requireRoomInQuota(UUID accountId, long incomingBytes) {
+        if (accountId == null || properties.getQuotaMb() <= 0) {
+            return;
+        }
+        long quotaBytes = properties.getQuotaMb() * 1024L * 1024L;
+        long used = uploadedImages.totalBytesForAccount(accountId);
+        if (used + incomingBytes > quotaBytes) {
+            throw new BusinessRuleViolationException(
+                    "This photo would take you past your " + properties.getQuotaMb()
+                            + "MB of image storage - you have used " + megabytes(used)
+                            + "MB. Delete some photos you no longer use, or contact support to raise the limit.");
+        }
+    }
+
+    /**
+     * Megabytes to one decimal place. Whole megabytes made the message
+     * contradict itself: 900KB against a 1MB quota read "you have used 0MB",
+     * which tells an owner their storage is both full and empty.
+     */
+    private static String megabytes(long bytes) {
+        return String.format("%.1f", bytes / (1024.0 * 1024.0));
+    }
+
+    /** Notes a stored object against the account paying for it; skipped for callers with no account. */
+    private void record(UUID accountId, String key, long byteSize, String contentType) {
+        if (accountId != null) {
+            uploadedImages.save(new UploadedImage(accountId, key, byteSize, contentType));
         }
     }
 

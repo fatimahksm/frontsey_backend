@@ -1,6 +1,10 @@
 package com.dbwb.platform.menu;
 
 import com.dbwb.platform.common.dto.ApiResponse;
+import com.dbwb.platform.common.dto.PagedResponse;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Pageable;
+import org.springframework.data.domain.Sort;
 import com.dbwb.platform.menu.dto.CategoryDeletionMode;
 import com.dbwb.platform.menu.dto.CategoryDto;
 import com.dbwb.platform.menu.dto.MenuItemRequest;
@@ -85,12 +89,29 @@ public class MenuController {
         return ApiResponse.ok(MenuItemResponse.from(item));
     }
 
+    /** One item, by id - so a detail screen need not fetch the whole list to find it. */
+    @GetMapping("/items/{itemId}")
+    public ApiResponse<MenuItemResponse> getItem(@PathVariable UUID websiteId, @PathVariable UUID itemId) {
+        return ApiResponse.ok(MenuItemResponse.from(menuService.getItem(websiteId, itemId, currentAccount.get())));
+    }
+
+    /**
+     * One page of items, newest first.
+     *
+     * `size` is capped rather than trusted: the parameter is the client's, and
+     * the reason this is paged at all is that an unbounded list of a big
+     * shop's items is expensive to assemble and to send.
+     */
     @GetMapping("/items")
-    public ApiResponse<List<MenuItemResponse>> listItems(@PathVariable UUID websiteId,
+    public ApiResponse<PagedResponse<MenuItemResponse>> listItems(@PathVariable UUID websiteId,
                                                           @RequestParam(required = false) UUID categoryId,
-                                                          @RequestParam(required = false) String search) {
-        var items = menuService.listItems(websiteId, currentAccount.get(), categoryId, search);
-        return ApiResponse.ok(items.stream().map(MenuItemResponse::from).toList());
+                                                          @RequestParam(required = false) String search,
+                                                          @RequestParam(defaultValue = "0") int page,
+                                                          @RequestParam(defaultValue = "50") int size) {
+        Pageable pageable = PageRequest.of(
+                Math.max(0, page), Math.min(200, Math.max(1, size)), Sort.by(Sort.Direction.DESC, "createdAt"));
+        var items = menuService.listItems(websiteId, currentAccount.get(), categoryId, search, pageable);
+        return ApiResponse.ok(PagedResponse.from(items, MenuItemResponse::from));
     }
 
     @DeleteMapping("/items/{itemId}")

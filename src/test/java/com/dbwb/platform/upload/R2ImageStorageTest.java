@@ -121,7 +121,9 @@ class R2ImageStorageTest {
     void theWholeUploadPathWorksEndToEndOverS3() {
         // UploadService validates, R2ImageStorage stores - the seam between
         // them is what this exercises.
-        UploadService uploadService = new UploadService(properties, storage);
+        UploadService uploadService = new UploadService(
+                properties, storage, org.mockito.Mockito.mock(
+                        com.dbwb.platform.upload.repository.UploadedImageRepository.class));
         byte[] png = {(byte) 0x89, 'P', 'N', 'G', 0x0D, 0x0A, 0x1A, 0x0A, 0, 0, 0, 0};
 
         String key = uploadService.storeImage(
