@@ -1,6 +1,9 @@
 package com.dbwb.platform.account;
 
 import com.dbwb.platform.account.dto.AccountDataExportResponse;
+import com.dbwb.platform.account.dto.AccountProfileResponse;
+import com.dbwb.platform.account.dto.ChangePasswordRequest;
+import com.dbwb.platform.account.dto.UpdateAccountProfileRequest;
 import com.dbwb.platform.account.entity.Account;
 import com.dbwb.platform.account.entity.AccountStatus;
 import com.dbwb.platform.account.repository.AccountRepository;
@@ -69,6 +72,58 @@ public class AccountService {
         this.passwordEncoder = passwordEncoder;
         this.businessRules = businessRules;
         this.emailService = emailService;
+    }
+
+    /**
+     * Who the caller is signed in as.
+     *
+     * Read from the database rather than assembled from the token: a token is
+     * minted at sign-in and outlives changes made since, so a name changed ten
+     * seconds ago would still read as the old one on the screen that changed
+     * it.
+     */
+    @Transactional(readOnly = true)
+    public AccountProfileResponse profile(AuthenticatedAccount caller) {
+        return AccountProfileResponse.from(load(caller.accountId()));
+    }
+
+    @Transactional
+    public AccountProfileResponse updateProfile(AuthenticatedAccount caller, UpdateAccountProfileRequest request) {
+        Account account = load(caller.accountId());
+        account.setFullName(request.fullName().trim());
+        return AccountProfileResponse.from(account);
+    }
+
+    /**
+     * Changes the password of an already-authenticated account.
+     *
+     * The current password is checked even though the caller holds a valid
+     * session. A session on a machine somebody walked away from is precisely
+     * the case this stops; without the check, whoever found that browser could
+     * take the account away from the person who owns the business.
+     *
+     * The failure message does not distinguish a wrong current password from
+     * anything else about the account, and the new password is rejected when
+     * it matches the old one - a "change" that changes nothing is a false
+     * sense of having reacted to something.
+     */
+    @Transactional
+    public void changePassword(AuthenticatedAccount caller, ChangePasswordRequest request) {
+        Account account = load(caller.accountId());
+        if (!passwordEncoder.matches(request.currentPassword(), account.getPasswordHash())) {
+            throw new BusinessRuleViolationException("That is not your current password.");
+        }
+        if (passwordEncoder.matches(request.newPassword(), account.getPasswordHash())) {
+            throw new BusinessRuleViolationException("Your new password must be different from your current one.");
+        }
+        account.setPasswordHash(passwordEncoder.encode(request.newPassword()));
+
+        // Told, not asked: a password changing is the one account event whose
+        // owner must hear about it even when they are the one who did it,
+        // because the time they did not is the time it matters.
+        emailService.send(account.getEmail(), "Your password was changed",
+                "The password for your Frontsey account was just changed. "
+                        + "If that was not you, reset your password immediately and contact support.");
     }
 
     @Transactional

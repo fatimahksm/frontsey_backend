@@ -92,6 +92,22 @@ class ApiErrorResponseTest {
         assertThat(response.getBody()).contains("Full name").contains("Password");
     }
 
+    /**
+     * The handler puts the field's name in front of the constraint's message,
+     * so a message written as a whole sentence gets the name stapled to it:
+     * "Password Password must be at least 8 characters long" shipped that way.
+     * Every constraint message has to be a fragment that completes the name.
+     */
+    @Test
+    void aFieldsNameIsNotRepeatedInsideItsOwnMessage() {
+        ResponseEntity<String> response = post("/api/auth/register",
+                "{\"email\":\"someone@example.com\",\"fullName\":\"A Name\",\"password\":\"short\"}");
+
+        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
+        assertThat(response.getBody()).contains("Password must be at least 8 characters");
+        assertThat(response.getBody()).doesNotContain("Password Password");
+    }
+
     @Test
     void noRefusalEverCarriesAClassNameOrAStackTrace() {
         List<ResponseEntity<String>> refusals = List.of(
