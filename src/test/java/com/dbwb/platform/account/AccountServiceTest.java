@@ -1,5 +1,7 @@
 package com.dbwb.platform.account;
 
+import com.dbwb.platform.account.dto.ChangePasswordRequest;
+import com.dbwb.platform.account.dto.UpdateAccountProfileRequest;
 import com.dbwb.platform.account.entity.Account;
 import com.dbwb.platform.account.entity.AccountStatus;
 import com.dbwb.platform.account.entity.Role;
@@ -31,7 +33,11 @@ import java.util.UUID;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.contains;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.lenient;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
@@ -121,6 +127,116 @@ class AccountServiceTest {
         assertThat(overdue.getEmail()).isNotEqualTo(originalEmail);
         assertThat(overdue.getFullName()).isNull();
         assertThat(overdue.getPasswordHash()).isEqualTo("unusable-hash");
+    }
+
+    // --- who you are signed in as, and changing your own password ---
+
+    /**
+     * The Account screen offered to export and permanently delete an account
+     * it could not name, and a Super Admin had no route to it at all. This is
+     * the read that lets a screen say whose account it is.
+     */
+    @Test
+    void profileReportsTheSignedInAccount() {
+        Account account = activeAccount();
+        when(accountRepository.findById(account.getId())).thenReturn(Optional.of(account));
+
+        var profile = accountService.profile(caller(account));
+
+        assertThat(profile.email()).isEqualTo("owner@example.com");
+        assertThat(profile.fullName()).isEqualTo("Owner");
+        assertThat(profile.role()).isEqualTo(Role.BUSINESS_OWNER);
+        assertThat(profile.emailVerified()).isTrue();
+    }
+
+    @Test
+    void updatingTheProfileChangesTheNameAndTrimsIt() {
+        Account account = activeAccount();
+        when(accountRepository.findById(account.getId())).thenReturn(Optional.of(account));
+
+        var updated = accountService.updateProfile(caller(account), new UpdateAccountProfileRequest("  Rania Khoury  "));
+
+        assertThat(updated.fullName()).isEqualTo("Rania Khoury");
+        assertThat(account.getFullName()).isEqualTo("Rania Khoury");
+    }
+
+    @Test
+    void changingThePasswordStoresANewHash() {
+        Account account = activeAccount();
+        account.setPasswordHash("old-hash");
+        when(accountRepository.findById(account.getId())).thenReturn(Optional.of(account));
+        when(passwordEncoder.matches("current", "old-hash")).thenReturn(true);
+        when(passwordEncoder.matches("brand-new-one", "old-hash")).thenReturn(false);
+        when(passwordEncoder.encode("brand-new-one")).thenReturn("new-hash");
+
+        accountService.changePassword(caller(account), new ChangePasswordRequest("current", "brand-new-one"));
+
+        assertThat(account.getPasswordHash()).isEqualTo("new-hash");
+    }
+
+    /**
+     * The check that matters. The caller already holds a valid session, so
+     * without this anyone who found a signed-in browser on an unattended
+     * machine could take the account away from the business that owns it.
+     */
+    @Test
+    void refusesToChangeThePasswordWithoutTheCurrentOne() {
+        Account account = activeAccount();
+        account.setPasswordHash("old-hash");
+        when(accountRepository.findById(account.getId())).thenReturn(Optional.of(account));
+        when(passwordEncoder.matches("wrong", "old-hash")).thenReturn(false);
+
+        assertThatThrownBy(() -> accountService.changePassword(
+                caller(account), new ChangePasswordRequest("wrong", "brand-new-one")))
+                .isInstanceOf(BusinessRuleViolationException.class)
+                .hasMessageContaining("not your current password");
+        assertThat(account.getPasswordHash()).isEqualTo("old-hash");
+    }
+
+    @Test
+    void refusesANewPasswordThatIsTheSameAsTheOldOne() {
+        Account account = activeAccount();
+        account.setPasswordHash("old-hash");
+        when(accountRepository.findById(account.getId())).thenReturn(Optional.of(account));
+        when(passwordEncoder.matches("current", "old-hash")).thenReturn(true);
+
+        assertThatThrownBy(() -> accountService.changePassword(
+                caller(account), new ChangePasswordRequest("current", "current")))
+                .isInstanceOf(BusinessRuleViolationException.class)
+                .hasMessageContaining("different");
+    }
+
+    /**
+     * A password changing is the one account event its owner has to hear about
+     * even when they did it themselves - because the time they did not is the
+     * time it matters.
+     */
+    @Test
+    void tellsTheOwnerTheirPasswordChanged() {
+        Account account = activeAccount();
+        account.setPasswordHash("old-hash");
+        when(accountRepository.findById(account.getId())).thenReturn(Optional.of(account));
+        when(passwordEncoder.matches("current", "old-hash")).thenReturn(true);
+        when(passwordEncoder.matches("brand-new-one", "old-hash")).thenReturn(false);
+        when(passwordEncoder.encode("brand-new-one")).thenReturn("new-hash");
+
+        accountService.changePassword(caller(account), new ChangePasswordRequest("current", "brand-new-one"));
+
+        verify(emailService).send(eq("owner@example.com"), contains("password"), any());
+    }
+
+    @Test
+    void sendsNoEmailWhenTheChangeIsRefused() {
+        Account account = activeAccount();
+        account.setPasswordHash("old-hash");
+        when(accountRepository.findById(account.getId())).thenReturn(Optional.of(account));
+        when(passwordEncoder.matches("wrong", "old-hash")).thenReturn(false);
+
+        assertThatThrownBy(() -> accountService.changePassword(
+                caller(account), new ChangePasswordRequest("wrong", "brand-new-one")))
+                .isInstanceOf(BusinessRuleViolationException.class);
+
+        verify(emailService, never()).send(any(), any(), any());
     }
 
     private Account activeAccount() {

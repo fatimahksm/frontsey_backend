@@ -1,14 +1,20 @@
 package com.dbwb.platform.account;
 
 import com.dbwb.platform.account.dto.AccountDataExportResponse;
+import com.dbwb.platform.account.dto.AccountProfileResponse;
+import com.dbwb.platform.account.dto.ChangePasswordRequest;
+import com.dbwb.platform.account.dto.UpdateAccountProfileRequest;
 import com.dbwb.platform.common.dto.ApiResponse;
 import com.dbwb.platform.security.CurrentAccount;
+import jakarta.validation.Valid;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.PutMapping;
+import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
-/** BR-AUTH-006/BR-DATA-005: the authenticated account's own deletion lifecycle and data export. */
+/** The authenticated account's own profile, password, deletion lifecycle (BR-AUTH-006) and data export (BR-DATA-005). */
 @RestController
 @RequestMapping("/api/account")
 public class AccountController {
@@ -19,6 +25,24 @@ public class AccountController {
     public AccountController(AccountService accountService, CurrentAccount currentAccount) {
         this.accountService = accountService;
         this.currentAccount = currentAccount;
+    }
+
+    /** Who you are signed in as - the screen that offers to export and delete an account should be able to name it. */
+    @GetMapping("/me")
+    public ApiResponse<AccountProfileResponse> me() {
+        return ApiResponse.ok(accountService.profile(currentAccount.get()));
+    }
+
+    @PutMapping("/me")
+    public ApiResponse<AccountProfileResponse> updateMe(@Valid @RequestBody UpdateAccountProfileRequest request) {
+        return ApiResponse.ok(accountService.updateProfile(currentAccount.get(), request), "Your details were saved.");
+    }
+
+    /** Requires the current password: a live session on an unattended machine must not be enough to take an account over. */
+    @PostMapping("/password")
+    public ApiResponse<Void> changePassword(@Valid @RequestBody ChangePasswordRequest request) {
+        accountService.changePassword(currentAccount.get(), request);
+        return ApiResponse.ok(null, "Your password was changed.");
     }
 
     @GetMapping("/data-export")
